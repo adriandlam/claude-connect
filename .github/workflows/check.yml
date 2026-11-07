@@ -15,4 +15,5 @@ jobs:
       - run: bun relay/check.ts
       - run: npm install -g @anthropic-ai/claude-code
       - run: claude plugin validate .
+      - run: claude plugin validate rows
       - run: claude plugin test .

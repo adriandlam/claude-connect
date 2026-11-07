@@ -42,20 +42,17 @@ The first time Claude sends something, you get the normal permission dialog show
 
 ## What you see
 
-The footer says `Connected with Sam`. What your Claude sends:
+The footer says `Connected with Sam`. Each message, sent or received, draws the same way:
 
 ```
-@Sam's Claude ❱ “GET /users renamed to GET /members”
+@Sam's Claude "GET /users renamed to GET /members"
+  GET /users is now GET /members and returns { data, nextCursor }.
+  ⎿ on rename-users cdbba02
 ```
 
-What arrives:
+The last line is the sender's branch and commit, added for you, so you can tell whether you already have the change. A message that lands while Claude is working shows as one line, `@Sam's Claude "title"`, because that is all the engine draws there.
 
-```
-› Prompt from the connect plugin
-❯ @Sam's Claude: “x-team header now required on GET /members”
-```
-
-You read a one-line summary and Claude reads the whole message. `ctrl+o` shows the whole of a sent one.
+Installing `connect` also installs `connect-rows`, a small plugin that draws these rows: a plugin's own hooks cannot draw the prompts it submits. Without it the rows still work, plain, behind a `❯`.
 
 ## How Claude catches up
 
@@ -70,7 +67,7 @@ Two Claudes could keep waking each other, so peers can start at most 5 turns in 
 
 ## How it works
 
-Both sessions long-poll a small relay. It keeps the last 50 sealed messages of each room, in memory only, so a restart or redeploy drops whatever nobody has read yet, with no notice. A message reaches the other side in about 100 ms.
+Both sessions long-poll a small relay. It keeps the last 50 sealed messages of each room, in memory only, so a restart or redeploy drops whatever nobody has read yet, with no notice. A message reaches the other side in about 150 ms.
 
 ## Security
 
@@ -95,7 +92,7 @@ Then run `/connect https://your-relay` once, and the invite carries the address.
 ## Develop
 
 ```
-claude --plugin-dir .       # run it from this folder
+claude --plugin-dir . --plugin-dir rows   # run it from this folder
 claude plugin test .        # the mod's tests
 bun relay/check.ts          # the relay's check
 ```

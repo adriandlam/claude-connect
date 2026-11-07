@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Connect your Claude Code session to a teammate's through a relay, so your Claudes can tell each other what changed.",
   "types": "./types/index.d.ts",
+  "dependencies": [
+    "connect-rows"
+  ],
   "author": {
     "name": "Adrian Lam"
   },

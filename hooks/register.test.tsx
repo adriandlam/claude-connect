@@ -18,6 +18,7 @@ const peer = (text: string, extra: Partial<Message> = {}): Message => ({
   kind: 'msg',
   summary: text,
   text,
+  at: '',
   stamp: nextId++,
   ...extra,
 })
@@ -73,7 +74,10 @@ function world(on: On, failures = 0, refused?: { on: boolean }) {
   })
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__connect__${e.name}` } }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: 'Adrian\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('process.run', (_, e) => {
+    const stdout = e.argv.includes('user.name') ? 'Adrian\n' : e.argv.includes('branch') ? 'main\n' : 'abc1234\n'
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
   on('ui.toast', (_, e) => (toasts.push(e.text), { value: undefined }))
   on('ui.log', (_, e) => (logs.push(e.text), { value: undefined }))
   on('ui.notify', (_, e) => (notified.push(e.text), { value: { isSent: true, channel: 'terminal_bell' } }))
@@ -245,7 +249,7 @@ test('a burst while idle starts one turn, once a short poll comes back quiet', a
   expect(w.polls.at(-1)).toContain('wait=15')
 
   await w.arrive(peer('two'))
-  expect(w.submitted).toEqual(['@Sam\'s Claude: “one”\n@Sam\'s Claude: “two”'])
+  expect(w.submitted).toEqual(['@Sam\'s Claude "one"\n  one\n@Sam\'s Claude "two"\n  two'])
   expect(w.polls.at(-1)).toContain('wait=25')
 })
 
@@ -258,7 +262,7 @@ test('a message while idle starts a turn, framed as not coming from the user', a
   expect(w.submitted.length).toBe(1)
   expect(w.framed()).toContain('<peer_message from="Sam">\nrenamed /users to /members\n</peer_message>')
   expect(w.framed()).toContain('not from your user')
-  expect(w.submitted).toEqual(['@Sam\'s Claude: “renamed /users to /members”']) // what the person sees
+  expect(w.submitted).toEqual(['@Sam\'s Claude "renamed /users to /members"\n  renamed /users to /members']) // what the person sees
 })
 
 test("a session never hears its own messages, and a join only shows a toast", async ($, on) => {
@@ -294,12 +298,12 @@ test('mid-turn, a message rides on the next tool result and starts no turn', asy
   const ran = await $.tool.call({ tool: 'Read', file_path: 'a.ts' })
   expect(ran.context).toBeUndefined() // hook context would reach the model as system text
   expect(w.framed()).toContain('schema changed')
-  expect(w.logs.at(-1)).toBe('@Sam\'s Claude: “schema changed”')
+  expect(w.logs.at(-1)).toBe('@Sam\'s Claude "schema changed"')
 
   await $.turn.start({ text: 'more work', turnId: 't2' })
   await w.arrive(peer('two\nlines'))
   await $.tool.call({ tool: 'Read', file_path: 'a.ts' })
-  expect(w.logs.at(-1)).toBe('@Sam\'s Claude: “two lines”') // the engine draws a log row as one line
+  expect(w.logs.at(-1)).toBe('@Sam\'s Claude "two lines"') // the engine draws a log row as one line
 })
 
 test('a message left at the end of a turn starts the next one', async ($, on) => {
@@ -327,7 +331,7 @@ test('two Claudes cannot ping-pong forever: turns stop until a person prompts', 
   // The person's prompt carries what was held, and peers may start turns again.
   await $.prompt.submit({ text: 'back', origin: { kind: 'composer' }, wait: false })
   expect(w.framed()).toContain('ping 7')
-  expect(w.logs.at(-1)).toBe('@Sam\'s Claude: “ping 7”')
+  expect(w.logs.at(-1)).toBe('@Sam\'s Claude "ping 7"')
   expect(w.footer()).toBe('Connected with Sam')
   await w.arrive(peer('again'))
   expect(w.submitted.at(-1)).toContain('again')
@@ -352,8 +356,8 @@ test('send posts the message', async ($, on) => {
 
   const sent = await $.tool.call({ tool: 'mcp__connect__send', message: 'POST /members is live' })
 
-  expect(sent.result).toBe('sent')
-  expect(w.posts.at(-1)).toMatchObject({ sid: 'mine', from: 'Adrian', kind: 'msg', text: 'POST /members is live' })
+  expect(sent.result).toBe('sent, on main abc1234')
+  expect(w.posts.at(-1)).toMatchObject({ sid: 'mine', from: 'Adrian', kind: 'msg', text: 'POST /members is live', at: 'main abc1234' })
 })
 
 test('send faces the permission system: a refusal posts nothing', async ($, on) => {
@@ -487,7 +491,7 @@ test('after Esc the engine drops the prompt, so the message shows as a line', as
 
   await w.arrive(peer('stopped news'))
 
-  expect(w.logs.at(-1)).toBe('@Sam\'s Claude: “stopped news”')
+  expect(w.logs.at(-1)).toBe('@Sam\'s Claude "stopped news"')
 })
 
 test('a refused row keeps the message for the next chance, and shows no bare prompt', async ($, on) => {
@@ -539,7 +543,7 @@ test('a reload picks the room back up from $.state, and send works after /clear 
 
   w.state.clear() // what /clear does
   const sent = await $.tool.call({ tool: 'mcp__connect__send', message: 'still here' })
-  expect(sent.result).toBe('sent')
+  expect(sent.result).toBe('sent, on main abc1234')
 })
 
 test('a reload finds the room the mod wrote to $.state', async ($, on) => {
@@ -570,7 +574,7 @@ test('a peer cannot put escape codes or invisible text in front of the person or
 
   // The ESC is what makes `[2J` an escape code: alone it is three harmless characters.
   expect(w.framed()).toContain('safe[2Jtext\nline two\tend')
-  expect(w.submitted[0]).toBe('@Sam\'s Claude: “safe[2Jtext line two end”') // one line: a peer cannot start its own
+  expect(w.submitted[0]).toBe('@Sam\'s Claude "safe[2Jtext line two end"\n  safe[2Jtext line two end') // a peer cannot reach the margin
 })
 
 test('a long backlog tells Claude to ask what changed', async ($, on) => {
@@ -593,7 +597,7 @@ test('the status names who is in the room, and a reload remembers them', async (
   await run($, 'connect')
   await w.clock.settle()
   const sent = await $.tool.call({ tool: 'mcp__connect__send', message: 'hi' })
-  expect(sent.result).toBe('sent') // a peer's chosen name never reaches the model outside the frame
+  expect(sent.result).toBe('sent, on main abc1234') // a peer's chosen name never reaches the model outside the frame
 })
 
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
@@ -602,21 +606,18 @@ const ROW = { plugin: 'connect', component: 'ToolUse', requestId: 'call-1' } as 
 const SENT = {
   ...TOOL,
   input: { summary: 'POST /members is live', message: 'POST /members is live\nsecond line' },
-  output: 'sent',
+  output: 'sent, on main abc1234',
   isRunning: false,
   isInterrupted: false,
 }
 
-test('a sent message draws its headline on every surface, and all of it when expanded', async $ => {
+test('a sent message draws as headline, body and how it went, on every surface', async $ => {
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...ROW, surface, props: SENT })
-    expect((await ui.find({ type: 'Text', text: /Claude/ }))?.text).toBe("@teammate's Claude ❱ “POST /members is live”")
-    expect(await ui.find({ type: 'Text', text: /second line/ })).toBeUndefined()
+    expect((await ui.find({ type: 'Text', text: /Claude/ }))?.text).toBe('@teammate\'s Claude "POST /members is live"')
+    expect((await ui.find({ type: 'Text', text: /second line/ }))?.text).toBe(`  ${SENT.input.message}`)
+    expect((await ui.find({ type: 'Text', text: /⎿/ }))?.text).toBe('  ⎿ sent, on main abc1234')
     await ui.unmount()
-
-    const full = await $.ui.mount({ ...ROW, surface, props: { ...SENT, isExpanded: true } })
-    expect((await full.find({ type: 'Text', text: /second line/ }))?.text).toBe(SENT.input.message)
-    await full.unmount()
 
     const result = await $.ui.mount({ ...ROW, component: 'ToolResult', surface, props: { ...TOOL, output: 'sent' } })
     expect(await result.find({ type: 'Text' })).toBeUndefined()
@@ -640,14 +641,14 @@ test('the footer says who is connected, beside whatever else is there', async ($
   expect(seen.at(-1)).toEqual(['focus', 'Connected with Sam'])
 })
 
-test('the person reads the summary, and Claude reads the whole message', async ($, on) => {
+test('a message draws as headline, body and where the sender stands', async ($, on) => {
   const w = world(on)
   await connect($, w)
 
-  await w.arrive(peer('the long version', { summary: 'short\nversion' }))
+  await w.arrive(peer('the long\nversion', { summary: 'short\nversion', at: 'rename-users abc1234' }))
 
-  expect(w.submitted).toEqual(["@Sam's Claude: “short version”"])
-  expect(w.framed()).toContain('the long version')
+  expect(w.submitted).toEqual(['@Sam\'s Claude "short version"\n  the long version\n  ⎿ on rename-users abc1234'])
+  expect(w.framed()).toContain('the long\nversion\n\nOn rename-users abc1234')
 })
 
 test('a credential in the summary is refused too', async ($, on) => {

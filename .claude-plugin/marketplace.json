@@ -1,5 +1,8 @@
 {
   "name": "claude-connect",
   "owner": { "name": "Adrian Lam" },
-  "plugins": [{ "name": "connect", "source": "./" }]
+  "plugins": [
+    { "name": "connect", "source": "./" },
+    { "name": "connect-rows", "source": "./rows" }
+  ]
 }
