@@ -1,0 +1,18 @@
+name: check
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 12 * * 1' # Claude Code's hooks API moves between releases, so check even with no commits
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun relay/check.ts
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate .
+      - run: claude plugin test .

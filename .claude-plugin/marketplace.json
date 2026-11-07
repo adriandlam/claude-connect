@@ -1,0 +1,5 @@
+{
+  "name": "claude-connect",
+  "owner": { "name": "Adrian Lam" },
+  "plugins": [{ "name": "connect", "source": "./" }]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "connect",
+  "version": "0.1.0",
+  "description": "Connect your Claude Code session to a teammate's through a relay, so your Claudes can tell each other what changed.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Adrian Lam"
+  },
+  "license": "MIT"
+}
