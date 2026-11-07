@@ -8,7 +8,7 @@ import type { Sealed } from '../types'
 
 const MAX_ROOMS = 200
 const MAX_LOG = 50
-const MAX_BODY = 16_384 // bytes: the mod's MAX_TEXT of 2,000 characters, sealed, with room for escapes
+const MAX_BODY = 16_384 // bytes: the mod's MAX_TEXT and MAX_SUMMARY, sealed, with room for escapes
 const MAX_WAIT_SECONDS = 25
 
 type Room = { log: Sealed[]; last: number; waiters: Set<() => void> }
@@ -35,11 +35,11 @@ function waitForNews(room: Room, seconds: number) {
 
 export async function handle(req: Request) {
   const url = new URL(req.url)
-  if (url.pathname === '/health') return new Response('ok') // Railway waits on this before it swaps a deploy in
+  if (url.pathname === '/health') return new Response('ok') // the host's healthcheck, so a deploy swaps in only once it answers
   if (url.pathname !== '/messages') return new Response('not found', { status: 404 })
 
-  const id = req.headers.get('authorization')?.match(/^Bearer ([\w-]{32,128})$/)?.[1]
-  if (!id) return new Response('needs a bearer token of 32 to 128 characters', { status: 401 })
+  const id = req.headers.get('authorization')?.match(/^Bearer ([0-9a-f]{64})$/)?.[1]
+  if (!id) return new Response('needs a room id: 64 hex characters', { status: 401 })
   const room = roomFor(id)
 
   if (req.method === 'POST') {

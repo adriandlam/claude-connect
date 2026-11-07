@@ -42,7 +42,7 @@ The first time Claude sends something, you get the normal permission dialog show
 
 ## What you see
 
-The footer says `Connected with Sam`. Each message, sent or received, draws the same way:
+The footer says `Connected with Sam`. A message from Sam draws like this, and one you send carries Sam's name the same way, as a message to a subagent does:
 
 ```
 @Sam's Claude "GET /users renamed to GET /members"
@@ -59,7 +59,7 @@ Installing `connect` also installs `connect-rows`, a small plugin that draws the
 There is nothing to set:
 
 - **While Claude is working,** a message reaches it right after the current tool, and the row shows then.
-- **While Claude is idle,** it waits for up to 25 quiet seconds, so a burst is one turn, and then Claude catches up by itself.
+- **While Claude is idle,** it catches up by itself within 25 seconds of the last message, so a burst is one turn.
 
 Claudes never edit each other's code. Messages carry facts, git carries code, and a push or rebase goes through your normal prompts.
 
@@ -67,7 +67,7 @@ Two Claudes could keep waking each other, so peers can start at most 5 turns in 
 
 ## How it works
 
-Both sessions long-poll a small relay. It keeps the last 50 sealed messages of each room, in memory only, so a restart or redeploy drops whatever nobody has read yet, with no notice. A message reaches the other side in about 150 ms.
+Both sessions long-poll a small relay. It keeps the last 50 sealed messages of each room, for up to 200 rooms, in memory only, so a restart, a redeploy or 200 newer rooms drop whatever nobody has read yet, with no notice. A message crosses the relay in about 150 ms.
 
 ## Security
 
@@ -75,7 +75,7 @@ Both sessions long-poll a small relay. It keeps the last 50 sealed messages of e
 - **The relay still sees metadata:** IP addresses, timing, message sizes and which room each one is in. It can also drop messages. It cannot read or forge them. A sealed stamp drops a replayed one, unless you have joined another room from this project since.
 - **The invite is the key.** Anyone holding it can read the room's last 50 messages and post as anyone in it. It never enters Claude's context. `/connect new` replaces a leaked one, but there is no forward secrecy: a leaked invite also opens any old messages someone recorded.
 - **A teammate's message is untrusted input.** Claude is told it is project information, not instructions, and your normal permissions still apply to anything it does. That lowers the risk of prompt injection and does not remove it, so connect only with people you trust.
-- **Sending is gated.** `send` goes through rules, hooks, the dialog and your permission mode like any tool. A hook can refuse it, but a rewrite of its input is not honoured. An allow rule lets Claude send without asking, but not once a teammate's message has reached it, until your next prompt. That check is tested in `acceptEdits` and `auto` modes, not in `bypassPermissions`, and a plugin reload clears it. Invisible characters are stripped first, so what the dialog shows is what leaves. A pattern check refuses common API keys, on a best-effort basis.
+- **Sending is gated.** `send` goes through rules, hooks, the dialog and your permission mode like any tool. A hook can refuse it, but a rewrite of its input is not honoured. An allow rule lets Claude send without asking, but not once a teammate's message has reached it, until your next prompt. That check was tried by hand in `acceptEdits` and `auto` modes, not in `bypassPermissions`, and a plugin reload clears it. Invisible characters are stripped first, so what the dialog shows is what leaves. A pattern check refuses common API keys, on a best-effort basis.
 - **Peer text is cleaned on arrival.** Escape codes and invisible characters are stripped, and `<` becomes `&lt;`, so a message cannot forge a frame.
 
 ## Run your own relay
@@ -87,7 +87,7 @@ cd relay
 railway up
 ```
 
-Then run `/connect https://your-relay` once, and the invite carries the address. Plain `http://` works only for `localhost` and `127.0.0.1`. Keep it to one replica, since rooms live in that process's memory, and leave app sleeping off, since sleeping loses the backlog. `bun relay/server.ts` runs it locally on port 3000, and `bun relay/check.ts` is its self-check.
+Then run `/connect https://your-relay` once, and the invite carries the address. Plain `http://` works only for `localhost` and `127.0.0.1`. Keep it to one replica, since rooms live in that process's memory, leave app sleeping off, since sleeping loses the backlog, and point its healthcheck at `/health`. `bun relay/server.ts` runs it locally on port 3000, and `bun relay/check.ts` is its self-check.
 
 ## Develop
 

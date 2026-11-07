@@ -1,7 +1,8 @@
 import type { Register } from 'claude-code'
 
-// connect writes each message as `@name "summary"` at the margin, then indented
-// lines, so a teammate's text can never reach the margin and pass for a header.
+// Reads the shape `row` writes in connect's hooks/register.tsx, which a plugin that
+// installs alone cannot import: a headline starting `@` at the margin, then indented
+// lines, so a teammate's text can never reach the margin and pass for a headline.
 export const register: Register = on => {
   on('ui.render', { component: 'UserMessage' }, ($, e, next) => {
     const { origin, text } = e.props
