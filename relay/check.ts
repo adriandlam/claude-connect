@@ -4,8 +4,9 @@ import assert from 'node:assert/strict'
 import { handle, options } from './server'
 
 const TOKEN = 'a'.repeat(64)
-const request = (path: string, init: RequestInit = {}, token = TOKEN) =>
-  handle(new Request(`http://relay${path}`, { ...init, headers: { authorization: `Bearer ${token}` } }))
+let caller = 0 // each request from its own address, unless a check names one
+const request = (path: string, init: RequestInit = {}, token = TOKEN, address = `10.0.0.${++caller}`) =>
+  handle(new Request(`http://relay${path}`, { ...init, headers: { authorization: `Bearer ${token}`, 'x-real-ip': address } }))
 const post = (data: string, token = TOKEN) => request('/messages', { method: 'POST', body: data }, token)
 const read = async (query = '', token = TOKEN) => (await (await request(`/messages${query}`, {}, token)).json()).messages
 const blobs = (messages: { data: string }[]) => messages.map(message => message.data)
@@ -59,6 +60,18 @@ for (let i = 0; i < 260; i++) {
 }
 assert.equal((await read('', active)).length, 1)
 assert.equal((await read('', '0'.repeat(64))).length, 0)
+
+// One address gets 120 requests a minute, and 20 new rooms an hour; others are not held back.
+const busy = '203.0.113.7'
+for (let i = 0; i < 120; i++) assert.equal((await request('/messages', {}, TOKEN, busy)).status, 200)
+assert.equal((await request('/messages', {}, TOKEN, busy)).status, 429)
+assert.equal((await request('/messages', {}, 'short', busy)).status, 429)
+assert.equal((await request('/messages')).status, 200)
+
+const maker = '203.0.113.8'
+for (let i = 0; i < 20; i++) assert.equal((await request('/messages', {}, `f${String(i).padStart(63, '0')}`, maker)).status, 200)
+assert.equal((await request('/messages', {}, 'e'.repeat(64), maker)).status, 429)
+assert.equal((await request('/messages', {}, TOKEN, maker)).status, 200) // a room that exists is not a new one
 
 // The body cap lives in the server, not in handle.
 const server = Bun.serve({ ...options, port: 0 })

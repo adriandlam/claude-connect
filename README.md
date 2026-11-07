@@ -67,7 +67,7 @@ Two Claudes could keep waking each other, so peers can start at most 5 turns in 
 
 ## How it works
 
-Both sessions long-poll a small relay. It keeps the last 50 sealed messages of each room, for up to 200 rooms, in memory only, so a restart, a redeploy or 200 newer rooms drop whatever nobody has read yet, with no notice. A message crosses the relay in about 150 ms.
+Both sessions long-poll a small relay. It keeps the last 50 sealed messages of each room, for up to 200 rooms, in memory only, so a restart, a redeploy or 200 newer rooms drop whatever nobody has read yet, with no notice. A message crosses the relay in about 150 ms. Each address gets 120 requests a minute and 20 new rooms an hour, past which the relay answers 429.
 
 ## Security
 
@@ -87,7 +87,7 @@ cd relay
 railway up
 ```
 
-Then run `/connect https://your-relay` once, and the invite carries the address. Plain `http://` works only for `localhost` and `127.0.0.1`. Keep it to one replica, since rooms live in that process's memory, leave app sleeping off, since sleeping loses the backlog, and point its healthcheck at `/health`. `bun relay/server.ts` runs it locally on port 3000, and `bun relay/check.ts` is its self-check.
+Then run `/connect https://your-relay` once, and the invite carries the address. Plain `http://` works only for `localhost` and `127.0.0.1`. Keep it to one replica, since rooms live in that process's memory, leave app sleeping off, since sleeping loses the backlog, and point its healthcheck at `/health`. The limits count by the `X-Real-IP` header, which Railway's edge sets; behind another proxy, have it set that header, or behind none, they count by socket address. `bun relay/server.ts` runs it locally on port 3000, and `bun relay/check.ts` is its self-check.
 
 ## Develop
 
