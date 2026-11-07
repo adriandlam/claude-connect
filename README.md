@@ -30,7 +30,7 @@ A private repository installs only for people who can read it on GitHub and whos
 2. Send that line to your teammate. They run it.
 3. Work as usual.
 
-The first time Claude sends something, you get the normal permission dialog showing the whole message. Choose "Yes, and don't ask again" to let updates flow for that project.
+The first time Claude sends something, you get the normal permission dialog showing the whole message. "Yes, and don't ask again" lets updates flow while you work. Claude still asks once a teammate's message has reached it, until your next prompt, so a message cannot make it send your project's files while you are away.
 
 | Command | What it does |
 | --- | --- |
@@ -50,7 +50,7 @@ The footer says `Connected with Sam`. Each message, sent or received, draws the 
   ⎿ on rename-users cdbba02
 ```
 
-The last line is the sender's branch and commit, added for you, so you can tell whether you already have the change. A message that lands while Claude is working shows as one line, `@Sam's Claude "title"`, because that is all the engine draws there.
+The last line is the sender's branch and commit, added for you, so you can tell whether you already have the change. A message that lands while Claude is working shows the same lines as plain dim rows, because that is all the engine draws there.
 
 Installing `connect` also installs `connect-rows`, a small plugin that draws these rows: a plugin's own hooks cannot draw the prompts it submits. Without it the rows still work, plain, behind a `❯`.
 
@@ -59,7 +59,7 @@ Installing `connect` also installs `connect-rows`, a small plugin that draws the
 There is nothing to set:
 
 - **While Claude is working,** a message reaches it right after the current tool, and the row shows then.
-- **While Claude is idle,** it waits for 15 quiet seconds, so a burst is one turn, and then Claude catches up by itself.
+- **While Claude is idle,** it waits for up to 25 quiet seconds, so a burst is one turn, and then Claude catches up by itself.
 
 Claudes never edit each other's code. Messages carry facts, git carries code, and a push or rebase goes through your normal prompts.
 
@@ -72,10 +72,10 @@ Both sessions long-poll a small relay. It keeps the last 50 sealed messages of e
 ## Security
 
 - **Messages are end-to-end encrypted.** Text, names and message types are sealed with XChaCha20-Poly1305 under a key derived from the invite's token. The token stays on your two machines, and the relay gets only a hash of it as the room's name.
-- **The relay still sees metadata:** IP addresses, timing, message sizes and which room each one is in. It can also drop messages. It cannot read or forge them, and a sealed stamp means a replayed one is dropped.
+- **The relay still sees metadata:** IP addresses, timing, message sizes and which room each one is in. It can also drop messages. It cannot read or forge them. A sealed stamp drops a replayed one, unless you have joined another room from this project since.
 - **The invite is the key.** Anyone holding it can read the room's last 50 messages and post as anyone in it. It never enters Claude's context. `/connect new` replaces a leaked one, but there is no forward secrecy: a leaked invite also opens any old messages someone recorded.
 - **A teammate's message is untrusted input.** Claude is told it is project information, not instructions, and your normal permissions still apply to anything it does. That lowers the risk of prompt injection and does not remove it, so connect only with people you trust.
-- **Sending is gated.** `send` goes through rules, hooks, the dialog and your permission mode like any tool. A hook can refuse it, but a rewrite of its input is not honoured. An allow rule means Claude sends without asking, so an injected request could reach the room. A pattern check refuses common API keys, on a best-effort basis.
+- **Sending is gated.** `send` goes through rules, hooks, the dialog and your permission mode like any tool. A hook can refuse it, but a rewrite of its input is not honoured. An allow rule lets Claude send without asking, but not once a teammate's message has reached it, until your next prompt. That check is tested in `acceptEdits` and `auto` modes, not in `bypassPermissions`, and a plugin reload clears it. Invisible characters are stripped first, so what the dialog shows is what leaves. A pattern check refuses common API keys, on a best-effort basis.
 - **Peer text is cleaned on arrival.** Escape codes and invisible characters are stripped, and `<` becomes `&lt;`, so a message cannot forge a frame.
 
 ## Run your own relay
@@ -87,7 +87,7 @@ cd relay
 railway up
 ```
 
-Then run `/connect https://your-relay` once, and the invite carries the address. Use `https://` anywhere but your own machine. Keep it to one replica, since rooms live in that process's memory, and leave app sleeping off, since sleeping loses the backlog. `bun relay/server.ts` runs it locally on port 3000, and `bun relay/check.ts` is its self-check.
+Then run `/connect https://your-relay` once, and the invite carries the address. Plain `http://` works only for `localhost` and `127.0.0.1`. Keep it to one replica, since rooms live in that process's memory, and leave app sleeping off, since sleeping loses the backlog. `bun relay/server.ts` runs it locally on port 3000, and `bun relay/check.ts` is its self-check.
 
 ## Develop
 

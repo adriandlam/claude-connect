@@ -52,14 +52,10 @@ export async function handle(req: Request) {
     return Response.json({ id: message.id })
   }
 
-  if (req.method === 'GET') {
-    const after = Number(url.searchParams.get('after')) || 0
-    const wait = Math.min(Number(url.searchParams.get('wait')) || 0, MAX_WAIT_SECONDS)
-    if (wait > 0 && room.last <= after) await waitForNews(room, wait)
-    return Response.json({ messages: room.log.filter(message => message.id > after) })
-  }
-
-  return new Response('method not allowed', { status: 405 })
+  const after = Number(url.searchParams.get('after')) || 0
+  const wait = Math.min(Number(url.searchParams.get('wait')) || 0, MAX_WAIT_SECONDS)
+  if (wait > 0 && room.last <= after) await waitForNews(room, wait)
+  return Response.json({ messages: room.log.filter(message => message.id > after) })
 }
 
 export const options = {

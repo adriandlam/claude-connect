@@ -15,14 +15,14 @@ const SEND = 'mcp__connect__send'
 // can quote the message and a peer can ask for these words in it.
 const UNSERVED = `connect registered the tool send but no tool.call hook answered this call: add on("tool.call", { tool: "${SEND}" }, ($, e) => ({ result: ... })) to the plugin.`
 // A relay, then the room's token as a second word, so it is never a URL a browser
-// could carry to the relay.
-const INVITE = /^(https?:\/\/[^/#\s]+)\/?(?:\s+([\w-]{32,128}))?$/
+// could carry to the relay. Plain http only to this machine: past it the room's
+// name would cross the wire in the clear.
+const INVITE = /^(https:\/\/[^/#\s]+|http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)\/?(?:\s+([\w-]{32,128}))?$/
 const MAX_TEXT = 2_000
 const MAX_SUMMARY = 100
 const MAX_PER_DELIVERY = 10
 const MAX_AUTO_TURNS = 5
 const MAX_WAIT_SECONDS = 25
-const QUIET_SECONDS = 15
 const RETRY_MS = 5_000
 const UNPRINTABLE = /[^\P{C}\n\t]|\p{DI}|[\p{Zl}\p{Zp}]/gu // escape codes, bidi overrides, invisible text
 const SECRET =
@@ -47,13 +47,13 @@ const SEND_SPEC = {
 
 const senderOf = (from: string) => from.slice(0, 64).replace(/[^\p{L}\p{N} ._@-]/gu, '') || 'teammate'
 // With no `<` a peer can neither close the frame nor forge one of the engine's rows.
+const printable = (text: unknown) => String(text ?? '').replace(UNPRINTABLE, '').trim()
 const clean = (text: string) => text.slice(0, MAX_TEXT).replace(UNPRINTABLE, '').replace(/</g, '&lt;')
 // A peer cannot start a line of its own: only the plugin's own text reaches the margin.
 const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim()
 const short = (text: string) => oneLine(clean(text.slice(0, MAX_SUMMARY)))
-const headline = ({ from, summary }: Message) => `@${from}'s Claude "${summary}"`
-const row = (message: Message) =>
-  [headline(message), `  ${oneLine(message.text)}`, ...(message.at ? [`  ⎿ on ${message.at}`] : [])].join('\n')
+const row = ({ from, summary, text, at }: Message) =>
+  [`@${from}'s Claude "${summary}"`, `  ${oneLine(text)}`, ...(at ? [`  ⎿ on ${at}`] : [])].join('\n')
 const framed = ({ from, text, at }: Message) =>
   `<peer_message from="${from}">\n${text}${at ? `\n\nOn ${at}` : ''}\n</peer_message>`
 const roomKey = (root: string) => `room:${root}`
@@ -71,6 +71,7 @@ let latest: Saved['latest'] = {} // the newest stamp seen from each sender
 let lastStamp = 0
 let isBusy = false
 let isPaused = false
+let hasHeard = false
 let autoTurns = 0
 const inbox: Message[] = []
 
@@ -102,10 +103,11 @@ function open(room: Room, { id, data }: Sealed): Message[] {
   }
 }
 
+const git = ($: EngineInterface, ...args: string[]) => $.process.run(['git', ...args]).catch(() => null)
+
 // Where the sender stands, so the reader can tell whether they already have the change.
 async function whereAmI($: EngineInterface) {
-  const git = (...args: string[]) => $.process.run(['git', ...args]).catch(() => null)
-  const [branch, commit] = await Promise.all([git('branch', '--show-current'), git('rev-parse', '--short', 'HEAD')])
+  const [branch, commit] = await Promise.all([git($, 'branch', '--show-current'), git($, 'rev-parse', '--short', 'HEAD')])
   return [branch?.stdout.trim(), commit?.stdout.trim()].filter(Boolean).join(' ')
 }
 
@@ -117,8 +119,15 @@ function destination(arg: string, saved?: Saved) {
 }
 
 function personIsBack() {
+  hasHeard = false
   autoTurns = 0
   isPaused = false
+}
+
+// A log row draws one line, so each line of the message takes one. The person sees
+// all that Claude reads, not only the summary the sender chose.
+function showArrivals($: EngineInterface, messages: Message[]) {
+  for (const line of digest(messages, row).join('\n').split('\n')) $.ui.log(line)
 }
 
 // The footer, not $.ui.status, which the engine draws as a warning.
@@ -128,10 +137,6 @@ async function showStatus($: EngineInterface) {
   await update($, footer, () => (isPaused ? `${inbox.length} held until your next prompt` : presence))
 }
 
-function showArrivals($: EngineInterface, messages: Message[]) {
-  for (const line of digest(messages, headline)) $.ui.log(line)
-}
-
 // A user row the person does not see, read on the model's next request. Hook
 // `context` would reach it as system text, which the model is told to treat as
 // its user's feedback, so a peer's words must not travel that way.
@@ -139,7 +144,10 @@ async function hand($: EngineInterface) {
   const messages = inbox.splice(0)
   const text = `The connect plugin sent a message:\n\n${[...digest(messages, framed), GUIDE].join('\n\n')}`
   const row = await $.session.append({ message: { type: 'user', content: [{ type: 'text', text }] } }).catch(() => null)
-  if (row && row.deny === undefined) return messages
+  if (row && row.deny === undefined) {
+    hasHeard = true
+    return messages
+  }
   inbox.unshift(...messages)
   return []
 }
@@ -188,9 +196,7 @@ async function listen($: EngineInterface, room: Room) {
   while (mine === listener) {
     try {
       await $.state.set(ROOM, room) // a reload needs it, and /clear wipes it
-      // With a turn to start, a short poll doubles as the timer that ends a burst.
-      const wait = inbox.length && !isBusy && !isPaused ? QUIET_SECONDS : MAX_WAIT_SECONDS
-      const reply = await $.http.fetch(`${room.relay}/messages?after=${cursor}&wait=${wait}`, { headers: headers(room) })
+      const reply = await $.http.fetch(`${room.relay}/messages?after=${cursor}&wait=${MAX_WAIT_SECONDS}`, { headers: headers(room) })
       if (mine !== listener) return
       if (!reply.ok) throw new Error(`relay answered ${reply.status}`)
 
@@ -222,8 +228,8 @@ async function join($: EngineInterface, arg: string) {
   if (!target) return { text: 'That invite is not valid: it needs an https:// relay, then a token of 32 to 128 letters, digits, - or _.' }
   const { relay, token } = target
 
-  const git = await $.process.run(['git', 'config', 'user.name']).catch(() => null)
-  const name = git?.stdout.trim() || (await $.env.get('USER')) || 'teammate'
+  const user = await git($, 'config', 'user.name')
+  const name = user?.stdout.trim() || (await $.env.get('USER')) || 'teammate'
   // The relay gets `id` as the room's name and cannot work back to `key`.
   const [id, key] = await Promise.all([sha256(`connect room:${token}`), sha256(`connect key:${token}`)])
   // Kept across restarts, so an unread message of your own never reads as a teammate's.
@@ -275,11 +281,17 @@ export const register: Register = on => {
     return { text: 'Disconnected. /connect rejoins and catches up; /connect new starts a fresh room.' }
   })
 
+  // A peer's words may be steering Claude now, so an allow rule cannot carry this
+  // past the person: an injected message must not get files out while they are away.
+  on('classic.PreToolUse', { tool: SEND }, ($, e, next) =>
+    hasHeard ? { ask: "A teammate's message has reached Claude since your last prompt." } : next(e),
+  )
+
   // Answering without `next` would skip rules, PreToolUse, the dialog and the
   // mode, and this tool sends text off the machine, so it faces them all first.
   on('tool.call', { tool: SEND }, async ($, e, next) => {
-    const message = String(e.message ?? '').trim()
-    const summary = String(e.summary ?? '').trim()
+    const message = printable(e.message) // what the dialog shows is what leaves: nothing rides along unseen
+    const summary = printable(e.summary)
     if (!current) return { deny: 'Not connected. Ask your user to run /connect.' }
     if (!message) return { deny: 'Nothing to send.' }
     if (message.length > MAX_TEXT) return { deny: `Too long: keep it under ${MAX_TEXT} characters.` }
@@ -333,7 +345,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'ToolUse' }, ($, e, next) => {
-    const { tool, input, output, isErrored, isInterrupted } = e.props
+    const { tool, input, isErrored, isInterrupted } = e.props
     if (tool !== SEND || isErrored || isInterrupted) return next(e)
 
     const { Box, Text } = $.ui.resolve(e)
@@ -344,16 +356,7 @@ export const register: Register = on => {
           @{peerNames() || 'teammate'}'s Claude "{summary || message}"
         </Text>
         <Text>{`  ${message}`}</Text>
-        <Text dimColor>{`  ⎿ ${typeof output === 'string' ? output : 'sending'}`}</Text>
       </Box>
     )
-  })
-
-  on('ui.render', { component: 'ToolResult' }, ($, e, next) => {
-    const { tool, isErrored } = e.props
-    if (tool !== SEND || isErrored) return next(e)
-
-    const { Box } = $.ui.resolve(e)
-    return <Box />
   })
 }
