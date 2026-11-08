@@ -16,7 +16,7 @@ export function blocksOf(text: string) {
 // A teammate's link would show only its label, so its syntax is drawn as text, target and all:
 // `[label](url)` and `![alt](url)` by escaping the `(`, a reference definition by its `[`
 // wherever it sits, since one inside a quote or list item counts too.
-export const unlinked = (text: string) => text.replace(/\]\(/g, ']\\(').replace(/\[(?=(?:\\.|[^\]\\])*\]:)/g, '\\[')
+export const unlinked = (text: string) => text.replace(/\]\(/g, ']\\(').replace(/\[(?=(?:\\[\s\S]|[^[\]\\])*\]:)/g, '\\[')
 
 export const register: Register = on => {
   on('ui.render', { component: 'UserMessage' }, ($, e, next) => {

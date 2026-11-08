@@ -20,6 +20,10 @@ test("a teammate's link shows where it goes, not only its label", () => {
   expect(unlinked('[the PR][1]\n[1]: https://evil.example')).toBe('[the PR][1]\n\\[1]: https://evil.example')
   expect(unlinked('[a]\n> [a]: https://evil.example\n- [a]: https://evil.example')).toBe('[a]\n> \\[a]: https://evil.example\n- \\[a]: https://evil.example')
   expect(unlinked('[a\\]b]\n[a\\]b]: https://evil.example')).toBe('[a\\]b]\n\\[a\\]b]: https://evil.example')
+  expect(unlinked('[a\\\n]\n[a\\\n]: https://evil.example')).toBe('[a\\\n]\n\\[a\\\n]: https://evil.example')
+  const slow = performance.now()
+  unlinked('['.repeat(20_000) + ']'.repeat(20_000))
+  expect(performance.now() - slow).toBeLessThan(500)
   expect(unlinked('arr[0] stays as written')).toBe('arr[0] stays as written')
 })
 
