@@ -1,6 +1,6 @@
 {
   "name": "connect-rows",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Draws connect's messages in the transcript. A plugin's own hooks cannot draw the prompts it submits, so this lives apart.",
   "author": {
     "name": "Adrian Lam"

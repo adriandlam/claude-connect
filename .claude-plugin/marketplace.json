@@ -1,6 +1,7 @@
 {
   "name": "claude-connect",
   "owner": { "name": "Adrian Lam" },
+  "description": "Connect your Claude Code session to a teammate's, so your Claudes tell each other what changed. Unofficial, not made by Anthropic.",
   "plugins": [
     { "name": "connect", "source": "./" },
     { "name": "connect-rows", "source": "./rows" }

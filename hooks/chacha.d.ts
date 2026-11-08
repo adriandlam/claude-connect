@@ -3,7 +3,8 @@ type Cipher = { encrypt(plain: Uint8Array): Uint8Array; decrypt(sealed: Uint8Arr
 export const xchacha20poly1305: (key: Uint8Array, nonce: Uint8Array) => Cipher
 export function managedNonce(make: typeof xchacha20poly1305): (key: Uint8Array) => Cipher
 
-// In the mod's runtime, and in Bun, but not yet in TypeScript's es2023 lib.
+// In the mod's runtime, and in Bun, but not yet in TypeScript's es2023 lib. Here, not in
+// types/index.d.ts, which may augment only 'claude-code'.
 declare global {
   interface Uint8Array {
     toBase64(): string

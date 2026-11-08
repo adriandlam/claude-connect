@@ -1,7 +1,7 @@
 {
   "name": "connect",
-  "version": "0.1.0",
-  "description": "Connect your Claude Code session to a teammate's through a relay, so your Claudes can tell each other what changed.",
+  "version": "0.2.0",
+  "description": "Connect your Claude Code session to a teammate's through an end-to-end encrypted relay, so your Claudes can tell each other what changed. Unofficial, not made by Anthropic.",
   "types": "./types/index.d.ts",
   "dependencies": [
     "connect-rows"
@@ -9,5 +9,37 @@
   "author": {
     "name": "Adrian Lam"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "userConfig": {
+    "name": {
+      "type": "string",
+      "title": "Your name",
+      "description": "How you appear to teammates. Empty uses your git user.name.",
+      "default": ""
+    },
+    "wake": {
+      "type": "boolean",
+      "title": "Wake Claude",
+      "description": "When a teammate's message arrives while Claude is idle, start a turn. Off, messages wait for your next prompt.",
+      "default": true
+    },
+    "turns": {
+      "type": "number",
+      "title": "Wake limit",
+      "description": "How many times in a row a teammate's messages can wake Claude before the rest wait for your next prompt.",
+      "default": 5
+    },
+    "requests": {
+      "type": "boolean",
+      "title": "Allow requests",
+      "description": "Let a teammate's Claude ask you, in a dialog, to do something on your machine, like push a branch. Off, each one is declined for you.",
+      "default": true
+    },
+    "rejoin": {
+      "type": "boolean",
+      "title": "Reconnect automatically",
+      "description": "Reconnect to a project's room when a session starts in it.",
+      "default": true
+    }
+  }
 }
