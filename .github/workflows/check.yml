@@ -6,6 +6,9 @@ on:
   schedule:
     - cron: '0 12 * * 1' # Claude Code's hooks API moves between releases, so check even with no commits
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
