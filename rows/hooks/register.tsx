@@ -14,9 +14,11 @@ export function blocksOf(text: string) {
 }
 
 // A teammate's link would show only its label, so its syntax is drawn as text, target and all:
-// `[label](url)` and `![alt](url)` by escaping the `(`, a reference definition by its `[`
-// wherever it sits, since one inside a quote or list item counts too.
-export const unlinked = (text: string) => text.replace(/\]\(/g, ']\\(').replace(/\[(?=(?:\\[\s\S]|[^[\]\\])*\]:)/g, '\\[')
+// an inline link by escaping its `(`, and every reference definition by escaping each `[`
+// before a line's first backtick, since a definition always opens its line. The rest of the
+// line is left alone, so code like `arr[0]` draws as written.
+export const unlinked = (text: string) =>
+  text.replace(/\]\(/g, ']\\(').replace(/^[^`\n]*/gm, line => line.replace(/(?<!\\)((?:\\\\)*)\[/g, '$1\\['))
 
 export const register: Register = on => {
   on('ui.render', { component: 'UserMessage' }, ($, e, next) => {

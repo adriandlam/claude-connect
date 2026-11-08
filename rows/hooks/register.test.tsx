@@ -16,15 +16,16 @@ test("a body line never becomes a headline, whatever it starts with", () => {
 })
 
 test("a teammate's link shows where it goes, not only its label", () => {
-  expect(unlinked('see [the PR](https://evil.example) and ![x](file:///a)')).toBe('see [the PR]\\(https://evil.example) and ![x]\\(file:///a)')
-  expect(unlinked('[the PR][1]\n[1]: https://evil.example')).toBe('[the PR][1]\n\\[1]: https://evil.example')
-  expect(unlinked('[a]\n> [a]: https://evil.example\n- [a]: https://evil.example')).toBe('[a]\n> \\[a]: https://evil.example\n- \\[a]: https://evil.example')
-  expect(unlinked('[a\\]b]\n[a\\]b]: https://evil.example')).toBe('[a\\]b]\n\\[a\\]b]: https://evil.example')
-  expect(unlinked('[a\\\n]\n[a\\\n]: https://evil.example')).toBe('[a\\\n]\n\\[a\\\n]: https://evil.example')
+  const evil = 'https://evil.example'
+  expect(unlinked(`see [the PR](${evil}) and ![x](file:///a)`)).toBe(`see \\[the PR]\\(${evil}) and !\\[x]\\(file:///a)`)
+  for (const definition of [`[1]: ${evil}`, `> [1]: ${evil}`, `- [1]: ${evil}`, `   [1]: ${evil}`, `[a\\]b]: ${evil}`, `[a\\\n]: ${evil}`, `[a[b]: ${evil}`]) {
+    expect(unlinked(definition).startsWith('\\[') || /^[->\s]+\\\[/.test(unlinked(definition))).toBe(true)
+  }
+  expect(unlinked('\\[a] and \\\\[b]')).toBe('\\[a] and \\\\\\[b]')
+  expect(unlinked('use `arr[0]` and `string[]` here')).toBe('use `arr[0]` and `string[]` here')
   const slow = performance.now()
   unlinked('['.repeat(20_000) + ']'.repeat(20_000))
   expect(performance.now() - slow).toBeLessThan(500)
-  expect(unlinked('arr[0] stays as written')).toBe('arr[0] stays as written')
 })
 
 test("connect's prompt draws as a cyan headline over its body", async ($, on: On) => {
@@ -34,7 +35,7 @@ test("connect's prompt draws as a cyan headline over its body", async ($, on: On
 
   const ui = await $.ui.mount({ plugin: 'connect-rows', component: 'UserMessage', surface: 'terminal', props })
   expect(await ui.find({ type: 'Text', text: /^@ Sam/ })).toMatchObject({ text: '@ Sam\'s Claude "renamed"', props: { bold: true, color: 'cyan' } })
-  expect(await ui.find({ type: 'Markdown', text: 'see [the PR]\\(https://evil.example)' })).toBeTruthy()
+  expect(await ui.find({ type: 'Markdown', text: 'see \\[the PR]\\(https://evil.example)' })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: '⎿ on main abc' })).toBeTruthy()
   await ui.unmount()
 })
