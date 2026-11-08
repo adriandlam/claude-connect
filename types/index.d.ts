@@ -4,6 +4,6 @@ export type Sealed = { id: number; data: string }
 
 declare module 'claude-code' {
   interface PluginState {
-    connect: { room: Room | null; footer: { text: string; who: string }; heard: boolean }
+    connect: { room: Room | null; footer: { text: string; who: string }; heard: boolean; unread: boolean }
   }
 }

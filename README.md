@@ -8,7 +8,7 @@ Not made by or affiliated with Anthropic.
 
 ## Setup
 
-**1. Deploy a relay.** Messages go through a tiny server you run. One of you deploys it, once, by following [Self-hosting](#self-hosting). Copy its URL.
+**1. Deploy a relay.** Messages go through a tiny server you run. One of you deploys it, once, by following [Self-hosting](#self-hosting). Copy its URL, secret path included.
 
 **2. Install the plugin.** Both of you, in Claude Code:
 
@@ -22,7 +22,7 @@ From a shell, the same with `claude plugin marketplace add …` and `claude plug
 **3. Connect.** In your project:
 
 ```
-/connect https://your-relay.up.railway.app
+/connect https://your-relay.up.railway.app/<secret>
 ```
 
 It prints `Your teammate joins with: /connect …`. Send your friend everything from `/connect` on, and have them paste it into Claude Code in their copy of the repo. Next time either of you opens Claude Code in this repo, in any clone or worktree with the same `origin` remote, it reconnects on its own.
@@ -34,14 +34,14 @@ To try it, ask Claude to tell your friend's Claude what you're working on.
 Under the prompt you'll see `✓ Connected with Sam`. A message from Sam's Claude looks like this:
 
 ```
-@ Sam's Claude "GET /users renamed to GET /members"
+@ From Sam's Claude "GET /users renamed to GET /members"
   GET /users is now GET /members and returns { data, nextCursor }.
   ⎿ on rename-users cdbba02
 ```
 
 The last line is Sam's branch and commit, so you can tell whether you've pulled the change yet. Messages you send show up as `@ Sent to Sam's Claude`.
 
-If your Claude is busy, it reads the message after its current step. If it's idle, it picks it up within about 25 seconds and starts a turn, which Claude Code labels "Prompt from the connect plugin".
+If your Claude is busy, it reads the message after its current step. If it's idle, it picks it up about a second after your friend's Claude stops sending, or after 5 seconds if it keeps sending, and starts a turn, which Claude Code labels "Prompt from the connect plugin".
 
 ## Commands
 
@@ -92,18 +92,22 @@ The relay is one file, [`relay/server.ts`](relay/server.ts), with no dependencie
 cd relay
 railway init
 railway up
+railway volume add --mount-path /data
+railway variable set DB_PATH=/data/relay.sqlite RELAY_SECRET=$(openssl rand -hex 16)
 railway domain
 ```
 
+Your relay's URL is then `https://<domain>/<RELAY_SECRET>`. That is what you pass to `/connect`, and the invite carries it, so only people you invite can make rooms on your relay. In a Railway template, set `RELAY_SECRET` to `${{secret(32, "abcdef0123456789")}}` and Railway generates one. Without `RELAY_SECRET` the URL is the bare domain and anyone who finds it can use it. Adding a secret to a relay already in use changes its URL: everyone must update the plugin first (older versions refuse an invite with a path), then join again with the new `/connect` line.
+
 Anywhere else, build `relay/Dockerfile`. A few rules:
 
-- Run one instance. Rooms live in memory, so a restart or redeploy drops unread messages.
-- Turn off sleeping or scale-to-zero, for the same reason.
+- Run one instance. Rooms are kept in a SQLite file at `DB_PATH`. Put it on a volume so unread messages survive restarts and redeploys. Without `DB_PATH` they live in memory and a restart drops them.
+- Without a volume, turn off sleeping or scale-to-zero, for the same reason.
 - Point the healthcheck at `/health`.
 - Plain `http://` only works for `localhost`.
 - Rate limits count by client IP. On Railway that comes from `X-Real-IP`. Behind another proxy, set `IP_HEADER` to the header it sets. Otherwise every client looks like the proxy, and the limits below apply to the whole relay.
 
-Limits: 400 rooms, the last 50 messages per room, 300 requests a minute and 60 new rooms an hour per address. A room unused for 2 minutes can be dropped to make space. Rooms in use never are.
+Limits: 400 rooms, the last 50 messages per room, 12 KB per message and 64 KB per reply (clients read the rest in pages). Per address (an IPv6 /64): 300 requests a minute, 60 new rooms an hour and 5 rooms in use at once, and 10 rooms in use per IPv6 /48. A room is in use if someone touched it in the last 2 minutes. One that isn't can be dropped to make space, with its messages. Rooms in use never are.
 
 ## Contributing
 
