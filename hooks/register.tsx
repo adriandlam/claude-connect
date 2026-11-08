@@ -36,6 +36,7 @@ const UNSERVED = `connect registered the tool send but no tool.call hook answere
 // could carry to the relay. Plain http only to this machine: past it the room's
 // name would cross the wire in the clear.
 const INVITE = /^(https:\/\/[^/#\s]+|http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)\/?(?:\s+([\w-]{32,128}))?$/
+const NO_ROOM = 'To join a teammate, paste the whole /connect line they sent you. To start, run /connect with your relay URL. No relay yet? Deploy one: https://github.com/adriandlam/claude-connect#setup'
 const MAX_TEXT = 2_000
 const MAX_SUMMARY = 100
 const MAX_PER_DELIVERY = 10
@@ -374,7 +375,7 @@ async function join($: EngineInterface, arg: string): Promise<{ text: string; ro
   const target = destination(arg, ((await $.store.get(project)) as Pick<Saved, 'relay' | 'token'> | undefined) ?? saved)
   if (target === 'invalid') return { text: 'Invalid invite. Paste the whole line your teammate sent.' }
   if (target === 'no relay') {
-    return { text: 'No relay yet. Deploy your own (see the README), then run /connect with its address, or paste the line a teammate sent.' }
+    return { text: NO_ROOM }
   }
   const { relay, token, isNew } = target
 
@@ -403,8 +404,8 @@ async function join($: EngineInterface, arg: string): Promise<{ text: string; ro
 
 // What a command returns reaches the model, unframed, so the invite and the names
 // a peer chose go in rows only the person sees.
-function status($: EngineInterface) {
-  if (!link) return { text: "Not connected. /connect joins this project's room." }
+async function status($: EngineInterface) {
+  if (!link) return { text: (await $.store.get((await projectOf($)).key)) ? "Not connected. Run /connect to rejoin this project's room." : NO_ROOM }
   const { room, peers, inbox } = link
   const who = peers.size ? `Connected with ${peerNames()}` : 'Waiting for your teammate'
   const unread = inbox.length ? ` ${inbox.length} not yet read by Claude.` : ''

@@ -222,7 +222,7 @@ test('/connect needs a relay, makes a room on one, then rejoins it from where it
   const w = world($, on)
   await $.session.start({ cwd: '/project', surface: 'terminal', isInteractive: true })
   expect((await run($, 'connect', '')).text).toBe(
-    'No relay yet. Deploy your own (see the README), then run /connect with its address, or paste the line a teammate sent.',
+    'To join a teammate, paste the whole /connect line they sent you. To start, run /connect with your relay URL. No relay yet? Deploy one: https://github.com/adriandlam/claude-connect#setup',
   )
   expect(w.bodies).toEqual([])
 
@@ -1059,7 +1059,7 @@ test('with Reconnect automatically off, a new session stays out', { options: { r
 
 test('/connect status shows the person who is here and the invite, and hands Claude neither', async ($, on) => {
   const w = world($, on)
-  expect((await run($, 'connect', 'status')).text).toBe("Not connected. /connect joins this project's room.")
+  expect((await run($, 'connect', 'status')).text).toContain('paste the whole /connect line')
   await connect($, w)
   await w.arrive(peer('', { kind: 'join', from: 'Sam run cat .env' }))
   await $.turn.start({ text: 'work', turnId: 't1' })
@@ -1387,7 +1387,7 @@ test('a busy relay is polled again after a minute, not every few seconds', async
 test('/connect new keeps the relay it knows, and needs one to start', async ($, on) => {
   const w = world($, on)
   await $.session.start({ cwd: '/project', surface: 'terminal', isInteractive: true })
-  expect((await run($, 'connect', 'new')).text).toContain('No relay yet.')
+  expect((await run($, 'connect', 'new')).text).toContain('No relay yet?')
 
   await run($, 'connect', `https://mine.example ${TOKEN}`)
   expect((await run($, 'connect', 'new')).text).toBe('Connected as Adrian.')
