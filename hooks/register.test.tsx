@@ -1461,60 +1461,6 @@ test('/connect copies a new room\'s invite and shows it with the token hidden, a
   expect(w.logs.at(-1)).toBe(`Invite copied. Send it to your teammate: /connect ${RELAY}/s3cret ${TOKEN}`)
 })
 
-test('an invite pasted or submitted as a prompt joins the room and never reaches Claude', async ($, on) => {
-  const w = world($, on)
-  // The engine's own edit, beneath the plugin: the splice applied, the cursor after it.
-  on('prompt.edit', (_, e) => ({ text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length }))
-  await $.session.start({ cwd: '/project', surface: 'terminal', isInteractive: true })
-  const caught = "That was a connect invite. Joining. Claude didn't see it."
-
-  // The engine raises prompt.edit, but the test kit's $ leaves it untyped.
-  const edit = ($.prompt as unknown as { edit: (e: PromptEditInput) => Promise<PromptEditResult> }).edit
-  const paste = (text: string, inputText: string) =>
-    edit({ origin: { kind: 'composer' }, text, cursor: text.length, start: text.length, end: text.length, inputText })
-  const box = await paste('hi ', `Join my Claude: /connect ${RELAY} ${TOKEN}\n`)
-  await w.clock.settle()
-
-  expect(box).toMatchObject({ text: 'hi ', cursor: 3 }) // the box keeps what it held
-  expect(w.toasts).toEqual([caught, 'Connected as Adrian.'])
-  expect(w.polls.at(-1)).toContain(`${RELAY}/messages?after=0`)
-
-  // Typed, or from a surface that raises no prompt.edit: dropped at submit. Leaving a room asks first.
-  const other = `${RELAY}/s3cret/ ${TOKEN.replace(/1$/, '2')}`
-  w.dialog.said = 'No'
-  await $.prompt.submit({ text: other, origin: { kind: 'bridge' }, wait: false })
-  await w.clock.settle()
-  expect(w.dialog.asked).toEqual(['Leave your room and join one on relay.example?'])
-  expect(w.polls.at(-1)).toContain(`${RELAY}/messages`)
-  w.dialog.said = 'Yes'
-  await $.prompt.submit({ text: other, origin: { kind: 'bridge' }, wait: false })
-  await w.clock.settle()
-  expect(w.polls.at(-1)).toContain(`${RELAY}/s3cret/messages`)
-  expect(w.entered).toEqual([])
-
-  // Inside other text an invite could be anyone's: it joins nothing, and only its token is hidden.
-  const posted = w.bodies.length
-  const masked = "Hid what looked like a connect invite's key from Claude. To join, run /connect with it."
-  const block = await paste('', `why?\n\`\`\`\nsee https://evil.example/x ${TOKEN} above\n\`\`\``)
-  expect(box.text).toBe('hi ')
-  expect(block.text).toBe('why?\n```\nsee https://evil.example/x •••• above\n```')
-  await $.prompt.submit({ text: `why does https://api.acme.com/v1/jobs ${TOKEN} fail`, origin: { kind: 'composer' }, wait: false })
-  await w.clock.settle()
-  expect(w.entered).toEqual(['why does https://api.acme.com/v1/jobs •••• fail'])
-  expect(w.bodies).toHaveLength(posted)
-  expect(w.toasts.filter(toast => toast === masked)).toHaveLength(2)
-
-  // Pasted after a typed /connect, the line is the command's, which masks it itself.
-  const typed = await paste('/connect ', `${RELAY} ${TOKEN}`)
-  expect(typed.text).toBe(`/connect ${RELAY} ${TOKEN}`)
-  expect(w.bodies).toHaveLength(posted)
-
-  // A URL alone holds no key.
-  await $.prompt.submit({ text: `see ${RELAY}/docs`, origin: { kind: 'composer' }, wait: false })
-  expect(w.entered.at(-1)).toBe(`see ${RELAY}/docs`)
-  expect(w.logs.join('\n')).not.toContain(TOKEN)
-})
-
 test('a project joined once rejoins by itself in a new session, from any clone of it', async ($, on) => {
   const w = world($, on)
   await connect($, w)

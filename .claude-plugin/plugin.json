@@ -1,6 +1,6 @@
 {
   "name": "connect",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Connect your Claude Code session to a teammate's through an end-to-end encrypted relay, so your Claudes can tell each other what changed. Unofficial, not made by Anthropic.",
   "types": "./types/index.d.ts",
   "dependencies": [

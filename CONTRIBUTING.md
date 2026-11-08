@@ -35,7 +35,7 @@ d=$PWD; git worktree add ../connect-sam && cd ../connect-sam
 CLAUDE_CONFIG_DIR=~/.claude-sam claude --plugin-dir "$d" --plugin-dir "$d/rows"
 ```
 
-The first time, Sam's session asks you to log in. In it, set Your name to Sam in `/config` (not `git config user.name`, which a worktree shares with your clone). Run `/connect http://localhost:3000` in your session; it copies the invite. Paste it into Sam's prompt (no need to type /connect). Saving a file reloads both.
+The first time, Sam's session asks you to log in. In it, set Your name to Sam in `/config` (not `git config user.name`, which a worktree shares with your clone). Run `/connect http://localhost:3000` in your session; it copies the invite. Paste it into Sam's prompt. Saving a file reloads both.
 
 ## Pull requests
 

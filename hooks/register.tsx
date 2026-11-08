@@ -59,20 +59,8 @@ const UNSERVED = `connect registered the tool send but no tool.call hook answere
  * never a URL a browser could carry to the relay. Plain http only to this machine: past it the room's name
  * would cross the wire in the clear.
  */
-const INVITE_RELAY = String.raw`((?:https:\/\/[^/?#\s]+|http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)(?:\/[\w-]+)*)\/?`
-const INVITE_TOKEN = '([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})'
-const INVITE = new RegExp(`^${INVITE_RELAY}(?:\\s+${INVITE_TOKEN})?$`)
-/**
- * A paste or prompt that is an invite and nothing else, bar `/connect` and a short lead-in such as "Join my
- * Claude:". Only that joins: an invite inside other text, as in a log or a teammate's message, could be anyone's.
- */
-const WHOLE_INVITE = new RegExp(`^(?:[^\\n]{0,40}\\/connect\\s+)?${INVITE_RELAY}\\s+${INVITE_TOKEN}$`)
-/** An invite anywhere in a prompt, token and all, whose token is masked: a relay URL alone holds no key, so it is left for Claude. */
-const PASTED_INVITE = new RegExp(`${INVITE_RELAY}\\s+${INVITE_TOKEN}\\b`, 'g')
-/** What the person reads when a prompt was an invite. */
-const CAUGHT = "That was a connect invite. Joining. Claude didn't see it."
-/** What the person reads when a prompt held an invite among other text. */
-const MASKED = "Hid what looked like a connect invite's key from Claude. To join, run /connect with it."
+const INVITE =
+  /^((?:https:\/\/[^/?#\s]+|http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)(?:\/[\w-]+)*)\/?(?:\s+([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))?$/
 const MAX_TEXT = 2_000
 const MAX_SUMMARY = 100
 const MAX_PER_DELIVERY = 10
@@ -679,38 +667,6 @@ async function shareInvite($: EngineInterface, room: Room, isMasked: boolean) {
 }
 
 /**
- * Joins the room when `text` is an invite, toasting how it went; false when it is not. A prompt that is one
- * must not reach Claude, as the invite is the room's key. Leaving another room for it asks first, naming the
- * relay, as a pasted line can be anyone's.
- */
-function joinPasted($: EngineInterface, text: string) {
-  const [, relay, token] = text.trim().match(WHOLE_INVITE) ?? []
-  if (!relay || !token) return false
-  const switching = async () => {
-    const current = link?.room
-    if (!current || (current.relay === relay && current.token === token)) return true
-    const question = `Leave your room and join one on ${new URL(relay).host}?`
-    return (await $.ui.ask(question, { header: 'Switch room', options: ['No', 'Yes'] }).catch(() => '')) === 'Yes'
-  }
-  void switching()
-    .then(async isGoing => {
-      if (!isGoing) return
-      const joined = await join($, `${relay} ${token}`)
-      if (joined.text) $.ui.toast(joined.text)
-      if (joined.room) await suggestFirst($, joined.room)
-    })
-    .catch(() => {})
-  return true
-}
-
-/** `text` with any invite's token hidden, toasting MASKED if there was one. */
-function maskInvites($: EngineInterface, text: string) {
-  const masked = text.replace(PASTED_INVITE, '$1 ••••')
-  if (masked !== text) $.ui.toast(MASKED)
-  return masked
-}
-
-/**
  * Offers FIRST in the empty prompt box, once per room. Marked done only once shown: the box refuses it while it
  * holds text or a turn runs, as when a join arrives mid-turn, and a later join tries again.
  */
@@ -848,20 +804,7 @@ export const register: Register = (on, options) => {
     return finished
   })
 
-  // At paste, so the invite never sits in the box, the transcript or the prompt history.
-  // Consumed whole: the box keeps what it held before the paste.
-  // Pasted after a typed /connect, it is the command's: command.run strips it from the row and Claude.
-  on('prompt.edit', ($, e, next) => {
-    if (/^\s*\/connect\s*$/.test(e.text.slice(0, e.start))) return next(e)
-    if (!joinPasted($, e.inputText)) return next({ ...e, inputText: maskInvites($, e.inputText) })
-    $.ui.toast(CAUGHT)
-    return { text: e.text, cursor: e.cursor }
-  })
-
   on('prompt.submit', async ($, e, next) => {
-    // Typed, or from a surface that raises no prompt.edit. First: a dropped prompt starts no turn.
-    const isPerson = ['composer', 'bridge'].includes(e.origin.kind) && !e.command
-    if (isPerson && joinPasted($, e.text)) return { drop: CAUGHT }
     if (['composer', 'bridge', 'sdk'].includes(e.origin.kind)) {
       // A row the model has not read yet steers the turn this prompt starts.
       hasHeard = isUnread
@@ -870,7 +813,7 @@ export const register: Register = (on, options) => {
       await showStatus($)
       if (!e.command) await catchUp($)
     }
-    return next(isPerson ? { ...e, text: maskInvites($, e.text) } : e)
+    return next(e)
   })
 
   // At the head of the hint line under the prompt, where it stays put as the engine's

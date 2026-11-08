@@ -25,7 +25,7 @@ From a shell, the same with `claude plugin marketplace add …` and `claude plug
 /connect https://your-relay.up.railway.app/<secret>
 ```
 
-It copies the invite and shows it with the token hidden: `Invite copied. Send it to your teammate`. If the copy didn't work, it prints the whole `/connect …` line instead. Nothing to paste? `/connect status` shows the whole line. Send it to your friend, and have them paste it into Claude Code in their copy of the repo, with or without `/connect` in front. Next time either of you opens Claude Code in this repo, in any clone or worktree with the same `origin` remote, it reconnects on its own.
+It copies the invite and shows it with the token hidden: `Invite copied. Send it to your teammate`. If the copy didn't work, it prints the whole `/connect …` line instead. Nothing to paste? `/connect status` shows the whole line. Send it to your friend, and have them paste it into Claude Code in their copy of the repo. Next time either of you opens Claude Code in this repo, in any clone or worktree with the same `origin` remote, it reconnects on its own.
 
 To try it, press Tab on the suggested prompt, `tell my teammate's Claude what I'm working on`, then Enter. No friend handy? With a clone of this repo and Bun, [try it on your own](CONTRIBUTING.md#try-it-on-your-own) with two sessions on one machine.
 
@@ -75,7 +75,7 @@ Change these in `/config`:
 
 ## Security
 
-- Messages are end-to-end encrypted (XChaCha20-Poly1305). The key comes from the invite. If you paste a whole invite line as a prompt, connect joins the room and keeps the line from Claude. Don't paste the invite anywhere else Claude reads. The relay only gets a hash of it. Send it to your friend over something you trust.
+- Messages are end-to-end encrypted (XChaCha20-Poly1305). The key comes from the invite. Claude never sees it if it goes after `/connect`, so don't paste it anywhere else Claude reads. The relay only gets a hash of it. Send it to your friend over something you trust.
 - The relay can see IP addresses, timing, message sizes and which room is which. It can drop messages but can't read or fake them.
 - The invite is the key. Anyone who has it can read the room's last 50 messages and post in it. If it leaks, run `/connect new`. There's no forward secrecy.
 - Treat your friend's messages like anything else from the internet. Claude is told they're information, not instructions, and your permissions still apply, but that lowers the risk of prompt injection without removing it. Only connect with people you trust.
