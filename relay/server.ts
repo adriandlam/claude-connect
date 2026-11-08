@@ -39,6 +39,8 @@ const IP_HEADER = process.env.RAILWAY_ENVIRONMENT_ID ? 'x-real-ip' : process.env
 /** With a secret, the relay's URL is https://host/<secret>, and only those who hold it can make rooms. */
 const SECRET = process.env.RELAY_SECRET
 const ROUTE = SECRET ? `/${SECRET}/messages` : '/messages'
+/** The relay's URL itself, so opening it in a browser shows it works. */
+const HOME = SECRET ? `/${SECRET}` : '/'
 /** Base64 only, so a body's length is its size in bytes, never text the runtime would hold as UTF-16. */
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
 
@@ -177,13 +179,14 @@ function waitForNews(room: Room, seconds: number) {
 }
 
 const digest = (text: string) => new Bun.CryptoHasher('sha256').update(text).digest()
-/** Compares hashes, as timingSafeEqual needs equal lengths, so the secret in ROUTE cannot be guessed by timing. */
-const isRoute = (path: string) => timingSafeEqual(digest(path), digest(ROUTE))
+/** Compares hashes, as timingSafeEqual needs equal lengths, so the secret in a path cannot be guessed by timing. */
+const isPath = (path: string, expected: string) => timingSafeEqual(digest(path), digest(expected))
 
 export async function handle(req: Request, server?: Bun.Server<undefined>) {
   const url = new URL(req.url)
   if (url.pathname === '/health') return new Response('ok') // the host's healthcheck, so a deploy swaps in only once it answers
-  if (!isRoute(url.pathname)) return new Response('not found', { status: 404 })
+  if (req.method === 'GET' && isPath(url.pathname, HOME)) return new Response('claude-connect relay is up. Paste this URL into /connect in Claude Code.')
+  if (!isPath(url.pathname, ROUTE)) return new Response('not found', { status: 404 })
 
   const id = req.headers.get('authorization')?.match(/^Bearer ([0-9a-f]{64})$/)?.[1]
   const ip = (IP_HEADER && req.headers.get(IP_HEADER)) || server?.requestIP(req)?.address || ''
@@ -231,7 +234,6 @@ if (import.meta.main) {
   if (!SECRET) console.warn('RELAY_SECRET is unset: anyone who can reach this relay can make rooms on it')
   if (!IP_HEADER) console.warn('IP_HEADER is unset: behind a proxy, every client counts as the proxy for rate limits')
   const server = Bun.serve(options)
-  console.log(`relay on ${server.url}`)
   // A redeploy: answer every waiting poll now, so clients poll the new relay instead of timing out.
   process.on('SIGTERM', async () => {
     for (const room of rooms.values()) for (const wake of room.waiters) wake()
@@ -239,4 +241,10 @@ if (import.meta.main) {
     db.close()
     process.exit(0)
   })
+  // Last, as the line that says it is ready: a SIGTERM from here on is handled.
+  console.log(`relay on ${server.url}`)
+  // Not the secret itself: deploy logs get pasted into issues and forwarded by log drains.
+  const domain = process.env.RAILWAY_PUBLIC_DOMAIN
+  if (SECRET && domain) console.log(`Ready. In Claude Code run: /connect https://${domain}/<RELAY_SECRET from Variables>`)
+  else if (SECRET && process.env.RAILWAY_ENVIRONMENT_ID) console.log('No public domain yet: run `railway domain` or add one under Settings > Networking, then redeploy for your /connect line.')
 }

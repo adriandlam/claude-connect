@@ -59,8 +59,20 @@ const UNSERVED = `connect registered the tool send but no tool.call hook answere
  * never a URL a browser could carry to the relay. Plain http only to this machine: past it the room's name
  * would cross the wire in the clear.
  */
-const INVITE =
-  /^((?:https:\/\/[^/?#\s]+|http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)(?:\/[\w-]+)*)\/?(?:\s+([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))?$/
+const INVITE_RELAY = String.raw`((?:https:\/\/[^/?#\s]+|http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?)(?:\/[\w-]+)*)\/?`
+const INVITE_TOKEN = '([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})'
+const INVITE = new RegExp(`^${INVITE_RELAY}(?:\\s+${INVITE_TOKEN})?$`)
+/**
+ * A paste or prompt that is an invite and nothing else, bar `/connect` and a short lead-in such as "Join my
+ * Claude:". Only that joins: an invite inside other text, as in a log or a teammate's message, could be anyone's.
+ */
+const WHOLE_INVITE = new RegExp(`^(?:[^\\n]{0,40}\\/connect\\s+)?${INVITE_RELAY}\\s+${INVITE_TOKEN}$`)
+/** An invite anywhere in a prompt, token and all, whose token is masked: a relay URL alone holds no key, so it is left for Claude. */
+const PASTED_INVITE = new RegExp(`${INVITE_RELAY}\\s+${INVITE_TOKEN}\\b`, 'g')
+/** What the person reads when a prompt was an invite. */
+const CAUGHT = "That was a connect invite. Joining. Claude didn't see it."
+/** What the person reads when a prompt held an invite among other text. */
+const MASKED = "Hid what looked like a connect invite's key from Claude. To join, run /connect with it."
 const MAX_TEXT = 2_000
 const MAX_SUMMARY = 100
 const MAX_PER_DELIVERY = 10
@@ -111,6 +123,10 @@ const WAKE = `Read the connect plugin's message above.`
  */
 const PRUNED = '(The relay may have lost some messages before they arrived. Ask your teammate if anything changed.)'
 const NO_ROOM = 'To join a teammate, paste the whole /connect line they sent you. To start, run /connect with your relay URL. No relay yet? Deploy one: https://github.com/adriandlam/claude-connect#setup'
+/** Said of a send while no teammate has joined or written, so a note into an empty room does not read as delivered. */
+const ALONE = 'Nobody has joined yet. It waits on the relay (last 50 kept) until they connect.'
+/** Offered once per room, Tab to take. Fixed, with no peer's name: a taken suggestion is the person's own prompt. */
+const FIRST = "tell my teammate's Claude what I'm working on"
 
 const SEND_SPEC = {
   name: 'send',
@@ -495,6 +511,7 @@ function receive($: EngineInterface, mine: Link, messages: Message[], now: numbe
     // A join carries the sender's origin, so an invite pasted into the wrong project shows.
     const elsewhere = kind === 'join' && room.origin && text && text !== room.origin
     if (kind === 'join') $.ui.toast(`${from} connected${elsewhere ? ` from ${short(text)}, not this project` : ''}`)
+    if (kind === 'join') void suggestFirst($, room).catch(() => {})
     if (kind === 'msg' && !answered.has(stampOf(message))) inbox.push(message)
     if (kind !== 'request') continue
     const isStale = stamp < now - MAX_REQUEST_AGE_MS
@@ -592,7 +609,7 @@ async function listen($: EngineInterface, room: Room) {
 }
 
 /** Joins or starts a room and starts listening. `text` reaches the model, so it never holds the invite. */
-async function join($: EngineInterface, arg: string): Promise<{ text: string; room?: Room }> {
+async function join($: EngineInterface, arg: string): Promise<{ text: string; room?: Room; isNew?: boolean }> {
   const attempt = ++joins
   const { root, origin, inviteKey } = await projectOf($)
   const saved = await savedOf($, root)
@@ -626,7 +643,7 @@ async function join($: EngineInterface, arg: string): Promise<{ text: string; ro
   void listen($, room)
   // A relay with no token is a new room: say so, in case it was half of a teammate's line.
   const newRoomNote = isNew && arg && arg !== 'new' ? ' This is a new room. To join a teammate, paste their whole line.' : ''
-  return { text: `Connected as ${name}.${newRoomNote}`, room }
+  return { text: `Connected as ${name}.${newRoomNote}`, room, isNew }
 }
 
 /**
@@ -643,15 +660,65 @@ async function status($: EngineInterface) {
   const who = peers.size ? `Connected with ${peerNames()}` : 'Waiting for your teammate'
   const unread = inbox.length ? ` ${inbox.length} not yet read by Claude.` : ''
   $.ui.log(`${who} in ${room.origin || room.root}, as ${room.name}.${unread}`)
-  $.ui.log(`Teammates join with: ${inviteOf(room)}`)
+  await shareInvite($, room, false)
   return {}
 }
 
-async function rejoin($: EngineInterface) {
-  const { inviteKey } = await projectOf($)
-  if (!(await $.store.get(inviteKey))) return
-  const { text } = await join($, '')
-  if (text) $.ui.toast(text)
+/**
+ * Puts the invite on the clipboard and, when `isMasked`, shows it with the secret path and token hidden, so a
+ * screen recording does not leak the room. Shown whole where the copy did not take, as a remote surface has no
+ * clipboard yet. OSC 52 can claim a copy the terminal dropped, so /connect status shows it whole regardless.
+ */
+async function shareInvite($: EngineInterface, room: Room, isMasked: boolean) {
+  const invite = inviteOf(room)
+  const { isCopied } = await $.ui.copy({ text: invite }).catch(() => ({ isCopied: false }))
+  if (!isCopied) return $.ui.log(`Your teammate joins with: ${invite}`)
+  const { origin, pathname } = new URL(room.relay)
+  const shown = isMasked ? `/connect ${origin}${pathname === '/' ? '' : '/••••'} •••••••• (Nothing to paste? /connect status shows it.)` : invite
+  $.ui.log(`Invite copied. Send it to your teammate: ${shown}`)
+}
+
+/**
+ * Joins the room when `text` is an invite, toasting how it went; false when it is not. A prompt that is one
+ * must not reach Claude, as the invite is the room's key. Leaving another room for it asks first, naming the
+ * relay, as a pasted line can be anyone's.
+ */
+function joinPasted($: EngineInterface, text: string) {
+  const [, relay, token] = text.trim().match(WHOLE_INVITE) ?? []
+  if (!relay || !token) return false
+  const switching = async () => {
+    const current = link?.room
+    if (!current || (current.relay === relay && current.token === token)) return true
+    const question = `Leave your room and join one on ${new URL(relay).host}?`
+    return (await $.ui.ask(question, { header: 'Switch room', options: ['No', 'Yes'] }).catch(() => '')) === 'Yes'
+  }
+  void switching()
+    .then(async isGoing => {
+      if (!isGoing) return
+      const joined = await join($, `${relay} ${token}`)
+      if (joined.text) $.ui.toast(joined.text)
+      if (joined.room) await suggestFirst($, joined.room)
+    })
+    .catch(() => {})
+  return true
+}
+
+/** `text` with any invite's token hidden, toasting MASKED if there was one. */
+function maskInvites($: EngineInterface, text: string) {
+  const masked = text.replace(PASTED_INVITE, '$1 ••••')
+  if (masked !== text) $.ui.toast(MASKED)
+  return masked
+}
+
+/**
+ * Offers FIRST in the empty prompt box, once per room. Marked done only once shown: the box refuses it while it
+ * holds text or a turn runs, as when a join arrives mid-turn, and a later join tries again.
+ */
+async function suggestFirst($: EngineInterface, room: Room) {
+  const key = `suggested:${room.root}`
+  if ((await $.store.get(key)) === room.id) return
+  const { isShown } = await $.prompt.suggest({ text: FIRST }).catch(() => ({ isShown: false }))
+  if (isShown) await $.store.set(key, room.id)
 }
 
 export const register: Register = (on, options) => {
@@ -668,8 +735,17 @@ export const register: Register = (on, options) => {
     hasHeard = !!(await $.state.get(HEARD)).value
     isUnread = !!(await $.state.get(UNREAD)).value
     const { value: room } = await $.state.get(ROOM)
+    const wasHere = !!room || !!(await projectOf($).then(({ inviteKey }) => $.store.get(inviteKey)).catch(() => null))
+    // Listed from the first message, not after the rejoin's network trip: Claude can send, or say why not,
+    // in a project with a room before the rejoin lands, and the tool list does not change mid-thread.
+    if (wasHere) await $.tool.register(SEND_SPEC)
     if (room) void listen($, room)
-    else if (settings.rejoin && e.isInteractive) void rejoin($).catch(() => {}) // a -p run cannot answer a request
+    else if (wasHere && settings.rejoin && e.isInteractive) {
+      // A -p run cannot answer a request.
+      void join($, '')
+        .then(({ text }) => text && $.ui.toast(text))
+        .catch(() => {})
+    }
 
     return next(e)
   })
@@ -681,8 +757,12 @@ export const register: Register = (on, options) => {
     return next(arg === 'status' ? e : { ...e, args: '' })
       .then(async () => {
         if (arg === 'status') return status($)
-        const { text, room } = await join($, arg)
-        if (room) $.ui.log(`Your teammate joins with: ${inviteOf(room)}`)
+        const { text, room, isNew } = await join($, arg)
+        if (room) {
+          // A joiner already has the line, and a rejoin would overwrite the clipboard for nothing.
+          if (isNew) await shareInvite($, room, true)
+          await suggestFirst($, room).catch(() => {})
+        }
         return { text }
       })
       .catch(() => ({ text: 'Cancelled.' }))
@@ -734,7 +814,8 @@ export const register: Register = (on, options) => {
     if (e.tool_use_id) sentTo.set(e.tool_use_id, names)
     // No peer's name: a peer chooses it, and a result has no frame.
     const where = at ? `, on ${at}` : ''
-    return { result: isRequest ? `Asked${where}. The answer comes back as a message.` : `Sent${where}` }
+    const said = isRequest ? `Asked${where}. The answer comes back as a message.` : `Sent${where}.`
+    return { result: names ? said : `${said} ${ALONE}` }
   })
 
   // A tool result always gets the main model another request, so a row added
@@ -767,7 +848,20 @@ export const register: Register = (on, options) => {
     return finished
   })
 
+  // At paste, so the invite never sits in the box, the transcript or the prompt history.
+  // Consumed whole: the box keeps what it held before the paste.
+  // Pasted after a typed /connect, it is the command's: command.run strips it from the row and Claude.
+  on('prompt.edit', ($, e, next) => {
+    if (/^\s*\/connect\s*$/.test(e.text.slice(0, e.start))) return next(e)
+    if (!joinPasted($, e.inputText)) return next({ ...e, inputText: maskInvites($, e.inputText) })
+    $.ui.toast(CAUGHT)
+    return { text: e.text, cursor: e.cursor }
+  })
+
   on('prompt.submit', async ($, e, next) => {
+    // Typed, or from a surface that raises no prompt.edit. First: a dropped prompt starts no turn.
+    const isPerson = ['composer', 'bridge'].includes(e.origin.kind) && !e.command
+    if (isPerson && joinPasted($, e.text)) return { drop: CAUGHT }
     if (['composer', 'bridge', 'sdk'].includes(e.origin.kind)) {
       // A row the model has not read yet steers the turn this prompt starts.
       hasHeard = isUnread
@@ -776,7 +870,7 @@ export const register: Register = (on, options) => {
       await showStatus($)
       if (!e.command) await catchUp($)
     }
-    return next(e)
+    return next(isPerson ? { ...e, text: maskInvites($, e.text) } : e)
   })
 
   // At the head of the hint line under the prompt, where it stays put as the engine's
@@ -807,12 +901,15 @@ export const register: Register = (on, options) => {
     const { Box, Text, Markdown } = $.ui.resolve(e)
     const { summary, message = '', request } = input as { summary?: string; message?: string; request?: boolean }
     const verb = request ? (isRunning ? 'Asking' : 'Asked') : isRunning ? 'Sending to' : 'Sent to'
-    const to = `${verb} ${sentTo.get(tool_use_id) || peerNames() || 'your teammate'}'s Claude`
+    // '' when it went out to an empty room; a peer who joined since must not show as its recipient.
+    const sent = sentTo.get(tool_use_id)
+    const to = `${verb} ${(sent ?? peerNames()) || 'your teammate'}'s Claude`
     return (
       <Box flexDirection="column" marginTop={1}>
         <Text bold color="cyan" dimColor={isRunning}>{`@ ${to} "${summary || oneLine(message)}"`}</Text>
-        <Box paddingLeft={2}>
+        <Box paddingLeft={2} flexDirection="column">
           <Markdown text={unlinked(message)} />
+          {sent === '' && <Text dimColor>{ALONE}</Text>}
         </Box>
       </Box>
     )

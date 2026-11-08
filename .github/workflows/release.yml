@@ -1,0 +1,32 @@
+name: release
+
+# Only once check passes on a push to main, so a release never ships from a red main.
+on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      # Runs on every push, not only bumps, so a failed release is retried by the next merge.
+      # The version goes into a tag name and an API path, so it must be plain semver.
+      - run: |
+          v=v$(jq -r .version .claude-plugin/plugin.json)
+          [[ $v =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version $v is not x.y.z"; exit 1; }
+          gh api "repos/$GH_REPO/git/ref/tags/$v" > /dev/null 2>&1 || gh release create "$v" --target "$SHA" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}

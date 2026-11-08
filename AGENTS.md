@@ -36,5 +36,5 @@ Type-check with `tsc -p .` once a session has loaded the mod, which writes `.cla
 
 - Behaviour changes need a test in `hooks/register.test.tsx` that fails without them.
 - Relay changes need a check in `relay/check.ts`. The relay stays one file with no npm dependencies; `bun:sqlite` is built in.
-- The relay's API is v2: `GET /messages` answers `{messages, more, pruned}`. `DB_PATH` keeps rooms across restarts (default `:memory:`), and `RELAY_SECRET` moves the route to `/<secret>/messages`.
+- The relay's API is v2: `GET /messages` answers `{messages, more, pruned}`. `DB_PATH` keeps rooms across restarts (default `:memory:`), and `RELAY_SECRET` moves the route to `/<secret>/messages`. A GET of `/<secret>` itself (or `/`) answers "relay is up" for a browser.
 - Commit messages: no AI attribution lines.

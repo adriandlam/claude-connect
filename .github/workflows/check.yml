@@ -26,3 +26,22 @@ jobs:
       - run: claude plugin validate rows
       - run: claude plugin test .
       - run: claude plugin test rows
+
+  # Installs pin `version`, so a change shipped without a bump never reaches anyone.
+  version:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: |
+          v=$(jq -r .version .claude-plugin/plugin.json)
+          old=$(git show "origin/$BASE:.claude-plugin/plugin.json" | jq -r .version)
+          [ "$(jq -r .version rows/.claude-plugin/plugin.json)" = "$v" ] || { echo "::error::rows/.claude-plugin/plugin.json must have version $v too"; exit 1; }
+          jq -r '.plugins[].version // empty' .claude-plugin/marketplace.json | grep -vx "$v" && { echo "::error::marketplace.json pins a version other than $v"; exit 1; }
+          git diff --quiet "origin/$BASE...HEAD" -- hooks rows ':!*.test.*' && exit 0
+          [ "$v" != "$old" ] && printf '%s\n' "$old" "$v" | sort -VC || { echo "::error::hooks/ or rows/ changed: bump version past $old in both plugin.json files"; exit 1; }
+        env:
+          BASE: ${{ github.base_ref }}

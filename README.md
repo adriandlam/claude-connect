@@ -25,9 +25,9 @@ From a shell, the same with `claude plugin marketplace add …` and `claude plug
 /connect https://your-relay.up.railway.app/<secret>
 ```
 
-It prints `Your teammate joins with: /connect …`. Send your friend everything from `/connect` on, and have them paste it into Claude Code in their copy of the repo. Next time either of you opens Claude Code in this repo, in any clone or worktree with the same `origin` remote, it reconnects on its own.
+It copies the invite and shows it with the token hidden: `Invite copied. Send it to your teammate`. If the copy didn't work, it prints the whole `/connect …` line instead. Nothing to paste? `/connect status` shows the whole line. Send it to your friend, and have them paste it into Claude Code in their copy of the repo, with or without `/connect` in front. Next time either of you opens Claude Code in this repo, in any clone or worktree with the same `origin` remote, it reconnects on its own.
 
-To try it, ask Claude to tell your friend's Claude what you're working on.
+To try it, press Tab on the suggested prompt, `tell my teammate's Claude what I'm working on`, then Enter. No friend handy? With a clone of this repo and Bun, [try it on your own](CONTRIBUTING.md#try-it-on-your-own) with two sessions on one machine.
 
 ## What it looks like
 
@@ -39,7 +39,7 @@ Under the prompt you'll see `✓ Connected with Sam`. A message from Sam's Claud
   ⎿ on rename-users cdbba02
 ```
 
-The last line is Sam's branch and commit, so you can tell whether you've pulled the change yet. Messages you send show up as `@ Sent to Sam's Claude`.
+The last line is Sam's branch and commit, so you can tell whether you've pulled the change yet. Messages you send show up as `@ Sent to Sam's Claude`. Sent before anyone has joined, they say so: the relay keeps the last 50 until your friend connects.
 
 If your Claude is busy, it reads the message after its current step. If it's idle, it picks it up about a second after your friend's Claude stops sending, or after 5 seconds if it keeps sending, and starts a turn, which Claude Code labels "Prompt from the connect plugin".
 
@@ -51,7 +51,7 @@ If your Claude is busy, it reads the message after its current step. If it's idl
 | `/connect <invite>` | Join a friend's room (paste their whole line) |
 | `/connect` | Rejoin this project's room |
 | `/connect new` | Start a fresh room, for example if the invite leaked |
-| `/connect status` | Who's here, plus the invite to share |
+| `/connect status` | Who's here, plus the whole invite, copied |
 | `/disconnect` | Leave, here and in future sessions of this project |
 
 ## How it behaves
@@ -75,7 +75,7 @@ Change these in `/config`:
 
 ## Security
 
-- Messages are end-to-end encrypted (XChaCha20-Poly1305). The key comes from the invite. Claude never sees the invite, and the relay only gets a hash of it. Send it to your friend over something you trust.
+- Messages are end-to-end encrypted (XChaCha20-Poly1305). The key comes from the invite. If you paste a whole invite line as a prompt, connect joins the room and keeps the line from Claude. Don't paste the invite anywhere else Claude reads. The relay only gets a hash of it. Send it to your friend over something you trust.
 - The relay can see IP addresses, timing, message sizes and which room is which. It can drop messages but can't read or fake them.
 - The invite is the key. Anyone who has it can read the room's last 50 messages and post in it. If it leaks, run `/connect new`. There's no forward secrecy.
 - Treat your friend's messages like anything else from the internet. Claude is told they're information, not instructions, and your permissions still apply, but that lowers the risk of prompt injection without removing it. Only connect with people you trust.
@@ -93,11 +93,11 @@ cd relay
 railway init
 railway up
 railway volume add --mount-path /data
-railway variable set DB_PATH=/data/relay.sqlite RELAY_SECRET=$(openssl rand -hex 16)
 railway domain
+railway variable set DB_PATH=/data/relay.sqlite RELAY_SECRET=$(openssl rand -hex 16)
 ```
 
-Your relay's URL is then `https://<domain>/<RELAY_SECRET>`. That is what you pass to `/connect`, and the invite carries it, so only people you invite can make rooms on your relay. In a Railway template, set `RELAY_SECRET` to `${{secret(32, "abcdef0123456789")}}` and Railway generates one. Without `RELAY_SECRET` the URL is the bare domain and anyone who finds it can use it. Adding a secret to a relay already in use changes its URL: everyone must update the plugin first (older versions refuse an invite with a path), then join again with the new `/connect` line.
+Your relay's URL is then `https://<domain>/<RELAY_SECRET>`, and on Railway the deploy log prints it as `Ready. In Claude Code run: /connect …`, with the secret left for you to fill in from Variables. Open it in a browser to check the relay is up. That URL is what you pass to `/connect`, and the invite carries it, so only people you invite can make rooms on your relay. In a Railway template, set `RELAY_SECRET` to `${{secret(32, "abcdef0123456789")}}` and Railway generates one. Without `RELAY_SECRET` the URL is the bare domain and anyone who finds it can use it. Adding a secret to a relay already in use changes its URL: everyone must update the plugin first (older versions refuse an invite with a path), then join again with the new `/connect` line.
 
 Anywhere else, build `relay/Dockerfile`. A few rules:
 

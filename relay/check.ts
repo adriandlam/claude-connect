@@ -27,6 +27,11 @@ for (const id of ['short', 'a'.repeat(63), 'a'.repeat(65), 'A'.repeat(64), 'g'.r
 assert.equal((await handle(new Request('http://relay/messages'))).status, 401)
 assert.equal((await handle(new Request('http://relay/elsewhere'))).status, 404)
 assert.equal((await handle(new Request('http://relay/health'))).status, 200)
+// Opening the relay's URL in a browser says it is up; nothing else at the root does.
+const home = await handle(new Request('http://relay/'))
+assert.equal(home.status, 200)
+assert.match(await home.text(), /relay is up/)
+assert.equal((await handle(new Request('http://relay/', { method: 'POST' }))).status, 404)
 
 // A post that is empty, not base64 or over 12,288 bytes is refused and stores nothing.
 for (const body of ['', 'not base64!', 'a b', '=abc', 'abc===', 'é', 'A'.repeat(12_289)]) assert.equal((await post(body)).status, 400)
@@ -209,10 +214,12 @@ async function start(env: Record<string, string>) {
   }
   const base = out.match(/relay on (\S+?)\/?\s/)![1]
   const call = (path: string, init: RequestInit = {}, token = TOKEN) => fetch(`${base}${path}`, { ...init, headers: { authorization: `Bearer ${token}` } })
+  /** Everything it printed, both streams. */
   const stop = async () => {
     child.kill('SIGTERM')
     assert.equal(await child.exited, 0)
-    return await new Response(child.stderr).text()
+    for (let chunk = await lines.read(); !chunk.done; chunk = await lines.read()) out += new TextDecoder().decode(chunk.value)
+    return out + (await new Response(child.stderr).text())
   }
   return { call, stop }
 }
@@ -222,6 +229,8 @@ assert.equal((await secret.call('/messages')).status, 404)
 assert.equal((await secret.call('/b9f1c3/messages')).status, 404)
 assert.equal((await secret.call('/b9f1c2/messages/x')).status, 404)
 assert.equal((await secret.call('/health')).status, 200)
+assert.equal((await secret.call('/b9f1c2')).status, 200)
+for (const path of ['/', '/b9f1c3', '/b9f1c2/']) assert.equal((await secret.call(path)).status, 404)
 const kept: number[] = []
 for (let i = 0; i < 55; i++) kept.push(await idOf(secret.call('/b9f1c2/messages', { method: 'POST', body: `kept${i}` })))
 // Stopping answers a waiting poll at once, so its client polls the next relay.
@@ -231,7 +240,7 @@ await Bun.sleep(500) // for the poll to reach the relay and wait there
 const stopped = secret.stop()
 assert.equal((await parked).status, 200)
 assert.ok(performance.now() - asleep < 2000)
-assert.doesNotMatch(await stopped, /RELAY_SECRET/)
+assert.doesNotMatch(await stopped, /RELAY_SECRET|Ready|domain/) // off Railway it prints neither
 
 // A restart keeps the log, `last` and `pruned`, so ids never go back, even on a slower clock.
 // It keeps no address: the room's row holds only its id and where its log stands.
@@ -256,6 +265,12 @@ assert.match(warnings, /IP_HEADER is unset/)
 const again = await start({})
 assert.deepEqual(await (await again.call(`/messages?after=${ahead + 1}`)).json(), { messages: [], more: false, pruned: kept[5] })
 await again.stop()
+// On Railway it prints the line to paste, or how to get a domain for one, never the secret: deploy logs travel.
+const railway = { RELAY_SECRET: 'b9f1c2', RAILWAY_ENVIRONMENT_ID: 'x' }
+const ready = await (await start({ ...railway, RAILWAY_PUBLIC_DOMAIN: 'r.up.railway.app' })).stop()
+assert.match(ready, /Ready\. In Claude Code run: \/connect https:\/\/r\.up\.railway\.app\/<RELAY_SECRET from Variables>\n/)
+assert.doesNotMatch(ready, /b9f1c2/)
+assert.match(await (await start(railway)).stop(), /run `railway domain` or add one under Settings > Networking, then redeploy/)
 rmSync(dir, { recursive: true })
 
 console.log('relay check passed')
