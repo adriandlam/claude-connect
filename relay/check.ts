@@ -1,7 +1,8 @@
 // Self-check for the relay: `bun relay/check.ts`. Exits non-zero if the logic breaks.
 import assert from 'node:assert/strict'
 
-import { handle, options } from './server'
+process.env.IP_HEADER = 'x-real-ip' // as behind a proxy that sets it
+const { handle, options, clientOf } = await import('./server')
 
 const TOKEN = 'a'.repeat(64)
 let caller = 0 // each request from its own address, unless a check names one
@@ -51,25 +52,62 @@ const log = await read()
 assert.equal(log.length, 50)
 assert.equal(log.at(-1).data, 'bulk 59')
 
-// Rooms past the cap evict the least recently used, sparing a room still in use.
+// The relay's clock, moved forward to make rooms idle.
+let skew = 0
+const realNow = Date.now
+Date.now = () => realNow() + skew
+const idle = () => (skew += 3 * 60_000)
+
+// Full of rooms in use, the relay refuses a new one rather than drop one.
 const active = 'd'.repeat(64)
 await post('keep', active)
-for (let i = 0; i < 260; i++) {
-  await post('x', String(i).padStart(64, '0'))
-  if (i % 100 === 0) await read('', active)
-}
-assert.equal((await read('', active)).length, 1)
-assert.equal((await read('', '0'.repeat(64))).length, 0)
+const room = (prefix: string, i: number) => `${prefix}${String(i).padStart(63, '0')}`
+let made = 0
+while (made < 1000 && (await post('x', room('1', made))).status === 200) made++
+assert.ok(made > 390)
+const full = await post('x', room('1', made))
+assert.equal(full.status, 503)
+assert.equal(full.headers.get('retry-after'), '120')
 
-// One address gets 120 requests a minute, and 20 new rooms an hour; others are not held back.
+// Once rooms go idle, a new room takes the place of the one unused longest, never of one in use.
+idle()
+await read('', active)
+for (let i = 0; i < 50; i++) assert.equal((await post('x', room('2', i))).status, 200)
+assert.equal((await read('', active)).length, 1)
+assert.equal((await read('', room('1', 0))).length, 0)
+
+// A room being long-polled is in use, however long its poll waits.
+const polled = '9'.repeat(64)
+await post('held', polled)
+const polling = read('?after=99999999999999&wait=1', polled)
+idle()
+for (let i = 0; i < 450; i++) await post('x', room('3', i))
+await polling
+assert.equal((await read('', polled)).length, 1)
+idle()
+
+// IPv6 counts by /64, and only a forwarded list's last entry is the proxy's.
+assert.equal(clientOf('2001:db8:1:2:aaaa::1'), '2001:db8:1:2::/64')
+assert.equal(clientOf('2001:DB8:1:2:bbbb:cccc:dddd:eeee'), '2001:db8:1:2::/64')
+assert.equal(clientOf('2001:db8::5'), '2001:db8:0:0::/64')
+assert.equal(clientOf('fe80::1%en0'), 'fe80:0:0:0::/64')
+assert.equal(clientOf('::1'), '0:0:0:0::/64')
+assert.equal(clientOf('203.0.113.9'), '203.0.113.9')
+assert.equal(clientOf('::ffff:203.0.113.9'), '::ffff:203.0.113.9')
+assert.equal(clientOf('6.6.6.6, 203.0.113.9'), '203.0.113.9')
+
+// One address gets 300 requests a minute, and 60 new rooms an hour; others are not held back.
 const busy = '203.0.113.7'
-for (let i = 0; i < 120; i++) assert.equal((await request('/messages', {}, TOKEN, busy)).status, 200)
+for (let i = 0; i < 300; i++) assert.equal((await request('/messages', {}, TOKEN, busy)).status, 200)
 assert.equal((await request('/messages', {}, TOKEN, busy)).status, 429)
 assert.equal((await request('/messages', {}, 'short', busy)).status, 429)
 assert.equal((await request('/messages')).status, 200)
+const host = (i: number) => `2001:db8:0:7::${i.toString(16)}`
+for (let i = 0; i < 300; i++) await request('/messages', {}, TOKEN, host(i))
+assert.equal((await request('/messages', {}, TOKEN, host(999))).status, 429)
 
 const maker = '203.0.113.8'
-for (let i = 0; i < 20; i++) assert.equal((await request('/messages', {}, `f${String(i).padStart(63, '0')}`, maker)).status, 200)
+for (let i = 0; i < 60; i++) assert.equal((await request('/messages', {}, `f${String(i).padStart(63, '0')}`, maker)).status, 200)
 assert.equal((await request('/messages', {}, 'e'.repeat(64), maker)).status, 429)
 assert.equal((await request('/messages', {}, TOKEN, maker)).status, 200) // a room that exists is not a new one
 
