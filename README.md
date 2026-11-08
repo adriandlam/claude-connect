@@ -8,7 +8,11 @@ Not made by or affiliated with Anthropic.
 
 ## Setup
 
-**1. Deploy a relay.** Messages go through a tiny server you run. One of you deploys it, once, by following [Self-hosting](#self-hosting). Copy its URL, secret path included.
+**1. Deploy a relay.** Messages go through a tiny server you run. One of you deploys it, once:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/jGhNLe?utm_medium=integration&utm_source=button&utm_campaign=claude-connect)
+
+No settings needed: Railway generates the secret. Your relay's URL is the service's domain plus `/` and its `RELAY_SECRET` variable, like `https://<name>.up.railway.app/<RELAY_SECRET>`. Elsewhere, see [Self-hosting](#self-hosting).
 
 **2. Install the plugin.** Both of you, in Claude Code:
 
@@ -97,7 +101,7 @@ railway domain
 railway variable set DB_PATH=/data/relay.sqlite RELAY_SECRET=$(openssl rand -hex 16)
 ```
 
-Your relay's URL is then `https://<domain>/<RELAY_SECRET>`, and on Railway the deploy log prints it as `Ready. In Claude Code run: /connect …`, with the secret left for you to fill in from Variables. Open it in a browser to check the relay is up. That URL is what you pass to `/connect`, and the invite carries it, so only people you invite can make rooms on your relay. In a Railway template, set `RELAY_SECRET` to `${{secret(32, "abcdef0123456789")}}` and Railway generates one. Without `RELAY_SECRET` the URL is the bare domain and anyone who finds it can use it. Adding a secret to a relay already in use changes its URL: everyone must update the plugin first (older versions refuse an invite with a path), then join again with the new `/connect` line.
+Your relay's URL is then `https://<domain>/<RELAY_SECRET>`, and on Railway the deploy log prints it as `Ready. In Claude Code run: /connect …`, with the secret left for you to fill in from Variables. Open it in a browser to check the relay is up. That URL is what you pass to `/connect`, and the invite carries it, so only people you invite can make rooms on your relay. Without `RELAY_SECRET` the URL is the bare domain and anyone who finds it can use it. Adding a secret to a relay already in use changes its URL: everyone must update the plugin first (older versions refuse an invite with a path), then join again with the new `/connect` line.
 
 Anywhere else, build `relay/Dockerfile`. A few rules:
 
