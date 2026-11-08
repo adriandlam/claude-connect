@@ -17,7 +17,8 @@ test("a body line never becomes a headline, whatever it starts with", () => {
 
 test("a teammate's link shows where it goes, not only its label", () => {
   expect(unlinked('see [the PR](https://evil.example) and ![x](file:///a)')).toBe('see [the PR]\\(https://evil.example) and ![x]\\(file:///a)')
-  expect(unlinked('[the PR][1]\n[1]: https://evil.example')).toBe('\\[the PR][1]\n\\[1]: https://evil.example')
+  expect(unlinked('[the PR][1]\n[1]: https://evil.example')).toBe('[the PR][1]\n\\[1]: https://evil.example')
+  expect(unlinked('[a]\n> [a]: https://evil.example\n- [a]: https://evil.example')).toBe('[a]\n> \\[a]: https://evil.example\n- \\[a]: https://evil.example')
   expect(unlinked('arr[0] stays as written')).toBe('arr[0] stays as written')
 })
 
