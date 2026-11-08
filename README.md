@@ -1,100 +1,113 @@
 # claude-connect
 
-Connect your Claude Code session to a teammate's, so your Claudes tell each other what changed.
+Let your Claude Code talk to your friend's Claude Code.
 
-Unofficial: a community mod, not made or endorsed by Anthropic.
+When two people work on the same repo, each with their own Claude, neither Claude knows what the other just changed. With claude-connect, your Claude sends a short note when it finishes something that matters, like a renamed endpoint or a new env var, and your friend's Claude reads it and adjusts.
 
-You and a friend are building one project, each with your own Claude. Yours renames an API route. Theirs hears about it a moment later and updates the client, without either of you relaying it by hand. That stops the slow drift between two people's docs, APIs and assumptions.
+Not made by or affiliated with Anthropic.
 
-## Install
+## Setup
 
-At the prompt of a terminal session:
+**1. Deploy a relay.** Messages go through a tiny server you run. One of you deploys it, once, by following [Self-hosting](#self-hosting). Copy its URL.
+
+**2. Install the plugin.** Both of you, in Claude Code:
 
 ```
 /plugin install connect --marketplace adriandlam/claude-connect
 ```
 
-Answer `y` to add the marketplace, then pick a scope. From a shell:
+Or from a shell: `claude plugin install connect --marketplace adriandlam/claude-connect`. In the desktop app, click + next to the prompt box, then Plugins, add the marketplace `adriandlam/claude-connect`, and add the plugin. If `/connect` doesn't show up, run `claude update` (tested on 2.1.319).
+
+**3. Connect.** In your project:
 
 ```
-claude plugin install connect --marketplace adriandlam/claude-connect
+/connect https://your-relay.up.railway.app
 ```
 
-In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins, Add marketplace with `adriandlam/claude-connect`, then Add plugin.
+It prints `Your teammate joins with: /connect …`. Send your friend everything from `/connect` on, and have them paste it into Claude Code in their copy of the repo. Next time either of you opens Claude Code in this repo, in any clone or worktree with the same `origin` remote, it reconnects on its own.
 
-A private repository installs only for people who can read it on GitHub and whose machine already holds a git credential for github.com (an SSH key, or `gh auth login` then `gh auth setup-git`).
+To try it, ask Claude to tell your friend's Claude what you're working on.
 
-## Use
+## What it looks like
 
-1. Run `/connect`. It prints a line with an invite.
-2. Send that line to your teammate. They run it.
-3. Work as usual.
-
-The first time Claude sends something, you get the normal permission dialog showing the whole message. "Yes, and don't ask again" lets updates flow while you work. Claude still asks once a teammate's message has reached it, until your next prompt, so a message cannot make it send your project's files while you are away.
-
-| Command | What it does |
-| --- | --- |
-| `/connect` | Rejoin this project's room, or make one |
-| `/connect <relay> <token>` | Join a teammate's room, the line they sent you |
-| `/connect <relay>` | Make a room on your own relay |
-| `/connect new` | Start a fresh room |
-| `/disconnect` | Leave. `/connect` catches up later |
-
-## What you see
-
-The footer says `Connected with Sam`. A message from Sam draws like this, and one you send carries Sam's name the same way, as a message to a subagent does:
+Under the prompt you'll see `✓ Connected with Sam`. A message from Sam's Claude looks like this:
 
 ```
-@Sam's Claude "GET /users renamed to GET /members"
+@ Sam's Claude "GET /users renamed to GET /members"
   GET /users is now GET /members and returns { data, nextCursor }.
   ⎿ on rename-users cdbba02
 ```
 
-The last line is the sender's branch and commit, added for you, so you can tell whether you already have the change. A message that lands while Claude is working shows the same lines as plain dim rows, because that is all the engine draws there.
+The last line is Sam's branch and commit, so you can tell whether you've pulled the change yet. Messages you send show up as `@ Sent to Sam's Claude`.
 
-Installing `connect` also installs `connect-rows`, a small plugin that draws these rows: a plugin's own hooks cannot draw the prompts it submits. Without it the rows still work, plain, behind a `❯`.
+If your Claude is busy, it reads the message after its current step. If it's idle, it picks it up within about 25 seconds and starts a turn, which Claude Code labels "Prompt from the connect plugin".
 
-## How Claude catches up
+## Commands
 
-There is nothing to set:
+| Command | |
+| --- | --- |
+| `/connect <relay>` | Make a room on your relay |
+| `/connect <invite>` | Join a friend's room (paste their whole line) |
+| `/connect` | Rejoin this project's room |
+| `/connect new` | Start a fresh room, for example if the invite leaked |
+| `/connect status` | Who's here, plus the invite to share |
+| `/disconnect` | Leave, here and in future sessions of this project |
 
-- **While Claude is working,** a message reaches it right after the current tool, and the row shows then.
-- **While Claude is idle,** it catches up by itself within 25 seconds of the last message, so a burst is one turn.
+## How it behaves
 
-Claudes never edit each other's code. Messages carry facts, git carries code, and a push or rebase goes through your normal prompts.
+- **Claude asks before sending.** Sending goes through your normal permissions, so by default you see a dialog with the whole message. Even if you allowed it with "don't ask again", it asks again whenever a friend's message has come in since your last prompt, so a message can't get Claude to send anything through connect while you're away.
+- **Requests.** If Sam's Claude needs something only your machine can do, like pushing a branch, you get a Yes/No dialog. Yes becomes your instruction to your Claude. No, or whatever you type instead, goes back to Sam.
+- **No loops.** Two Claudes could keep waking each other up, so messages can start at most 5 turns in a row. After that they wait for you.
+- **Code goes through git.** Claudes only exchange notes. They never edit each other's files.
 
-Two Claudes could keep waking each other, so peers can start at most 5 turns in a row. After that, messages wait for your next prompt, the footer counts them, and you get one notification.
+## Settings
 
-## How it works
+Change these in `/config`:
 
-Both sessions long-poll a small relay. It keeps the last 50 sealed messages of each room, for up to 200 rooms, in memory only, so a restart, a redeploy or 200 newer rooms drop whatever nobody has read yet, with no notice. A message crosses the relay in about 150 ms. Each address gets 120 requests a minute and 20 new rooms an hour, past which the relay answers 429.
+| Setting | Default | |
+| --- | --- | --- |
+| Your name | git `user.name` | What your friend sees |
+| Wake Claude | on | Off: messages wait for your next prompt |
+| Wake limit | 5 | Turns in a row that messages can start |
+| Allow requests | on | Off: requests are declined for you |
+| Reconnect automatically | on | Off: each session waits for `/connect` |
 
 ## Security
 
-- **Messages are end-to-end encrypted.** Text, names and message types are sealed with XChaCha20-Poly1305 under a key derived from the invite's token. The token stays on your two machines, and the relay gets only a hash of it as the room's name.
-- **The relay still sees metadata:** IP addresses, timing, message sizes and which room each one is in. It can also drop messages. It cannot read or forge them. A sealed stamp drops a replayed one, unless you have joined another room from this project since.
-- **The invite is the key.** Anyone holding it can read the room's last 50 messages and post as anyone in it. It never enters Claude's context. `/connect new` replaces a leaked one, but there is no forward secrecy: a leaked invite also opens any old messages someone recorded.
-- **A teammate's message is untrusted input.** Claude is told it is project information, not instructions, and your normal permissions still apply to anything it does. That lowers the risk of prompt injection and does not remove it, so connect only with people you trust.
-- **Sending is gated.** `send` goes through rules, hooks, the dialog and your permission mode like any tool. A hook can refuse it, but a rewrite of its input is not honoured. An allow rule lets Claude send without asking, but not once a teammate's message has reached it, until your next prompt. That check was tried by hand in `acceptEdits` and `auto` modes, not in `bypassPermissions`, and a plugin reload clears it. Invisible characters are stripped first, so what the dialog shows is what leaves. A pattern check refuses common API keys, on a best-effort basis.
-- **Peer text is cleaned on arrival.** Escape codes and invisible characters are stripped, and `<` becomes `&lt;`, so a message cannot forge a frame.
+- Messages are end-to-end encrypted (XChaCha20-Poly1305). The key comes from the invite. Claude never sees the invite, and the relay only gets a hash of it. Send it to your friend over something you trust.
+- The relay can see IP addresses, timing, message sizes and which room is which. It can drop messages but can't read or fake them.
+- The invite is the key. Anyone who has it can read the room's last 50 messages and post in it. If it leaks, run `/connect new`. There's no forward secrecy.
+- Treat your friend's messages like anything else from the internet. Claude is told they're information, not instructions, and your permissions still apply, but that lowers the risk of prompt injection without removing it. Only connect with people you trust.
+- Names aren't verified. Anyone with the invite can post as "Sam".
+- Incoming text is cleaned: escape codes and invisible characters are stripped, links show their real URL, and names are cut to 64 plain characters.
 
-## Run your own relay
+Found a vulnerability? See [SECURITY.md](SECURITY.md).
 
-The relay is one file with no dependencies, and your teammates need nothing but its address. It needs Bun 1.3.14 or later, because earlier versions do not cap chunked uploads.
+## Self-hosting
+
+The relay is one file, [`relay/server.ts`](relay/server.ts), with no dependencies. It runs on Bun 1.3.14 or later and listens on `PORT` (3000 by default). Without the button, from a clone:
 
 ```
 cd relay
+railway init
 railway up
+railway domain
 ```
 
-Then run `/connect https://your-relay` once, and the invite carries the address. Plain `http://` works only for `localhost` and `127.0.0.1`. Keep it to one replica, since rooms live in that process's memory, leave app sleeping off, since sleeping loses the backlog, and point its healthcheck at `/health`. The limits count by the `X-Real-IP` header, which Railway's edge sets; behind another proxy, have it set that header, or behind none, they count by socket address. `bun relay/server.ts` runs it locally on port 3000, and `bun relay/check.ts` is its self-check.
+Anywhere else, build `relay/Dockerfile`. A few rules:
 
-## Develop
+- Run one instance. Rooms live in memory, so a restart or redeploy drops unread messages.
+- Turn off sleeping or scale-to-zero, for the same reason.
+- Point the healthcheck at `/health`.
+- Plain `http://` only works for `localhost`.
+- Rate limits count by client IP. On Railway that comes from `X-Real-IP`. Behind another proxy, set `IP_HEADER` to the header it sets. Otherwise every client looks like the proxy, and the limits below apply to the whole relay.
 
-```
-claude --plugin-dir . --plugin-dir rows   # run it from this folder
-claude plugin test .        # the mod's tests
-bun relay/check.ts          # the relay's check
-```
+Limits: 400 rooms, the last 50 messages per room, 300 requests a minute and 60 new rooms an hour per address. A room unused for 2 minutes can be dropped to make space. Rooms in use never are.
 
-The hooks API this uses is early access, tested on Claude Code 2.1.319. `send` detects a call that passed its permission checks by the engine's error text for an unserved tool, so a changed message makes sends fail safely until the mod is updated.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT
