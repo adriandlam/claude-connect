@@ -13,10 +13,11 @@ Not made by or affiliated with Anthropic.
 **2. Install the plugin.** Both of you, in Claude Code:
 
 ```
-/plugin install connect --marketplace adriandlam/claude-connect
+/plugin marketplace add adriandlam/claude-connect
+/plugin install connect@claude-connect
 ```
 
-Or from a shell: `claude plugin install connect --marketplace adriandlam/claude-connect`. In the desktop app, click + next to the prompt box, then Plugins, add the marketplace `adriandlam/claude-connect`, and add the plugin. If `/connect` doesn't show up, run `claude update` (tested on 2.1.319).
+From a shell, the same with `claude plugin marketplace add …` and `claude plugin install …`. In the desktop app, click + next to the prompt box, then Plugins, add the marketplace `adriandlam/claude-connect`, and add `connect`. `connect-rows`, which draws the messages, comes with it. If `/connect` doesn't show up, run `claude update` (tested on 2.1.319).
 
 **3. Connect.** In your project:
 
