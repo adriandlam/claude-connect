@@ -52,8 +52,7 @@ function world($: Engine, on: On, now = 0) {
   const notified: string[] = []
   const gate = { text: UNSERVED, during: async () => {} } // `during` stands for the person, while the dialog is up
   const relay = {
-    status: 200,
-    ok: true,
+    postStatus: 200,
     isCut: false,
     isDown: false,
     failedPolls: 0,
@@ -160,7 +159,7 @@ function world($: Engine, on: On, now = 0) {
       try {
         posts.push(JSON.parse(new TextDecoder().decode(cipher.decrypt(Uint8Array.fromBase64(e.init.body!)))))
       } catch {} // a room the test holds no key for
-      return { value: { ...OK, status: relay.status, ok: relay.ok, text: '{"id":1}' } }
+      return { value: { ...OK, status: relay.postStatus, ok: relay.postStatus === 200, text: '{"id":1}' } }
     }
     polls.push(e.url)
     const dead = relay.dead
@@ -173,7 +172,7 @@ function world($: Engine, on: On, now = 0) {
     return { value: { ...OK, text: JSON.stringify(queue.shift()) } }
   })
 
-  // Then the second the loop pauses after a quiet poll answered at once, as the mock answers.
+  // Queues poll answers and lets the loop take them, then the 1 s it pauses after a quiet poll (the mock answers at once).
   const reply = async (...answers: (typeof queue)[number][]) => {
     shown = logs.length
     queue.push(...answers)
@@ -214,9 +213,9 @@ function world($: Engine, on: On, now = 0) {
       await ui.unmount()
       return texts.map(({ text }) => text).join('')
     },
-    // What the model was handed in rows the person does not see.
     reply,
     sealed,
+    // What the model was handed in rows the person does not see.
     framed: () =>
       rows
         .filter(row => row.message.type === 'user')
@@ -294,7 +293,7 @@ test('/connect says so when the relay refuses or cannot be reached, and does not
   await $.session.start({ cwd: '/project', surface: 'terminal', isInteractive: true })
 
   // Named by host alone: the path can hold the relay's secret, and this text reaches the model.
-  Object.assign(w.relay, { status: 404, ok: false })
+  w.relay.postStatus = 404
   expect((await run($, 'connect', `${RELAY}/s3cret ${TOKEN}`)).text).toBe('The relay at relay.example answered 404. Is that its https:// URL?')
 
   w.relay.isDown = true
@@ -872,7 +871,7 @@ test('a message the relay refuses is not reported as sent', async ($, on) => {
   const w = world($, on)
   await connect($, w)
 
-  Object.assign(w.relay, { status: 413, ok: false })
+  w.relay.postStatus = 413
   const before = w.bodies.length
   expect((await $.tool.call({ tool: 'mcp__connect__send', message: 'hi' })).deny).toContain('413')
   expect(w.bodies.length).toBe(before + 1) // a 4xx would only be refused again
@@ -894,7 +893,7 @@ test('a send the relay dropped or failed is tried again as the same sealed messa
   expect((await sending).result).toBe('Sent, on main abc1234')
   expect(w.bodies.length).toBe(before + 1)
 
-  Object.assign(w.relay, { status: 502, ok: false })
+  w.relay.postStatus = 502
   const failing = $.tool.call({ tool: 'mcp__connect__send', message: 'again' })
   await w.clock.advance(3_000)
   expect((await failing).deny).toContain('502')
@@ -1711,15 +1710,15 @@ test('a relay refusing for load says so, instead of blaming the address', async 
   const w = world($, on)
   await $.session.start({ cwd: '/project', surface: 'terminal', isInteractive: true })
 
-  Object.assign(w.relay, { status: 429, ok: false })
+  w.relay.postStatus = 429
   expect((await run($, 'connect', `${RELAY} ${TOKEN}`)).text).toBe('The relay is busy for your network. Try again in a minute.')
-  Object.assign(w.relay, { status: 503, ok: false })
+  w.relay.postStatus = 503
   expect((await run($, 'connect', `${RELAY} ${TOKEN}`)).text).toBe('The relay is full. Try again in a few minutes, or run your own: see the README.')
 
-  Object.assign(w.relay, { status: 200, ok: true })
+  w.relay.postStatus = 200
   await run($, 'connect', `${RELAY} ${TOKEN}`)
   await w.clock.settle()
-  Object.assign(w.relay, { status: 429, ok: false })
+  w.relay.postStatus = 429
   const sent = await $.tool.call({ tool: 'mcp__connect__send', message: 'hi' })
   expect(sent.deny).toContain('The relay is busy for your network.')
 })
@@ -1765,7 +1764,7 @@ test('an answer is retried as the same sealed message, so it cannot arrive twice
   const w = world($, on)
   await connect($, w)
   w.dialog.said = 'No'
-  Object.assign(w.relay, { status: 500, ok: false })
+  w.relay.postStatus = 500
   const before = w.bodies.length
 
   await w.arrive(ask('push a', 'one'))

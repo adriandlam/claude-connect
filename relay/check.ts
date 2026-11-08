@@ -33,8 +33,8 @@ for (const body of ['', 'not base64!', 'a b', '=abc', 'abc===', 'é', 'A'.repeat
 assert.equal((await read()).length, 0)
 
 // Posts come back in order, `after` skips what was read, and rooms stay apart.
-const first = (await (await post('one')).json()).id
-const second = (await (await post('two')).json()).id
+const first = await idOf(post('one'))
+const second = await idOf(post('two'))
 assert.ok(second > first)
 assert.ok(first > Date.now() - 60_000) // ids are timestamps, so a restart cannot rewind them past a cursor
 assert.deepEqual(blobs(await read()), ['one', 'two'])
@@ -148,7 +148,7 @@ for (let i = 0; i < 300; i++) await request('/messages', {}, TOKEN, host(i))
 assert.equal((await request('/messages', {}, TOKEN, host(999))).status, 429)
 
 // A minute into a fresh hour, so the hourly count starts at zero and stays in one hour.
-skew += 3_600_000 - ((realNow() + skew) % 3_600_000) + 60_000
+skew += 3_600_000 - (Date.now() % 3_600_000) + 60_000
 // One address keeps at most 5 rooms in use; rooms it stopped using no longer count.
 const squatter = '203.0.113.6'
 for (let i = 0; i < 5; i++) assert.equal((await request('/messages', {}, room('7', i), squatter)).status, 200)

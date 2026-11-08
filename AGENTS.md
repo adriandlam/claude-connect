@@ -20,7 +20,7 @@ Type-check with `tsc -p .` once a session has loaded the mod, which writes `.cla
 - A command's returned text reaches the model. The invite holds the room's key, so it only ever goes out through `$.ui.log`.
 - `send` must call `next(e)` and then check for the engine's exact `UNSERVED` error text. That is how it knows the call cleared rules, hooks and the dialog. Answering without `next` skips the person's permissions.
 - A request's yes approves only its summary. The reason goes to Claude as a teammate's information.
-- Every peer field is cleaned in `open` before anything reads it. Add new fields there, not at the point of use.
+- Every peer field is cleaned in `unseal` before anything reads it. Add new fields there, not at the point of use.
 
 ## Gotchas
 

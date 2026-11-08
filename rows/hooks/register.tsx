@@ -1,8 +1,10 @@
 import type { Register } from 'claude-code'
 
-// Reads the shape `row` writes in connect's hooks/register.tsx, which a plugin that
-// installs alone cannot import: a headline at the margin, then the body and where the
-// sender stands, each line indented, so a teammate's text can never pass for a headline.
+/**
+ * Reads the shape `row` writes in connect's hooks/register.tsx, which a plugin that
+ * installs alone cannot import: a headline at the margin, then the body and where the
+ * sender stands, each line indented, so a teammate's text can never pass for a headline.
+ */
 export function blocksOf(text: string) {
   const blocks: { head: string; body: string[]; at: string }[] = []
   for (const line of text.split('\n')) {
@@ -13,13 +15,16 @@ export function blocksOf(text: string) {
   return blocks
 }
 
-// A teammate's link would show only its label, so its syntax is drawn as text, target and all:
-// an inline link by escaping its `(`, and every reference definition by escaping each `[`
-// before a line's first backtick, since a definition always opens its line. The rest of the
-// line is left alone, so code like `arr[0]` draws as written.
+/**
+ * A teammate's link would show only its label, so its syntax is drawn as text, target and all:
+ * an inline link by escaping its `(`, and every reference definition by escaping each `[`
+ * before a line's first backtick, since a definition always opens its line. The rest of the
+ * line is left alone, so code like `arr[0]` draws as written.
+ */
 export const unlinked = (text: string) =>
   text.replace(/\]\(/g, ']\\(').replace(/^[^`\n]*/gm, line => line.replace(/(?<!\\)((?:\\\\)*)\[/g, '$1\\['))
 
+/** Draws the rows connect submits. connect cannot, as a plugin's own ui.render hooks are skipped for prompts it submits. */
 export const register: Register = on => {
   on('ui.render', { component: 'UserMessage' }, ($, e, next) => {
     const { origin, text } = e.props
