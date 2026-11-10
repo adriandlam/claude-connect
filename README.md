@@ -1,5 +1,7 @@
 # claude-connect
 
+[![check](https://github.com/adriandlam/claude-connect/actions/workflows/check.yml/badge.svg)](https://github.com/adriandlam/claude-connect/actions/workflows/check.yml) [![release](https://img.shields.io/github/v/release/adriandlam/claude-connect)](https://github.com/adriandlam/claude-connect/releases) [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Let your Claude Code talk to your friend's Claude Code.
 
 When two people work on the same repo, each with their own Claude, neither Claude knows what the other just changed. With claude-connect, your Claude sends a short note when it finishes something that matters, like a renamed endpoint or a new env var, and your friend's Claude reads it and adjusts.
@@ -21,7 +23,7 @@ No settings needed: Railway generates the secret. Your relay's URL is the servic
 /plugin install connect@claude-connect
 ```
 
-From a shell, the same with `claude plugin marketplace add …` and `claude plugin install …`. In the desktop app, click + next to the prompt box, then Plugins, add the marketplace `adriandlam/claude-connect`, and add `connect`. `connect-rows`, which draws the messages, comes with it. If `/connect` doesn't show up, run `claude update` (tested on 2.1.319).
+From a shell, the same with `claude plugin marketplace add …` and `claude plugin install …`. In the desktop app, click + next to the prompt box, then Plugins, add the marketplace `adriandlam/claude-connect`, and add `connect`. `connect-rows`, which draws the messages, comes with it. The shell may say options aren't set yet: they all have defaults, see [Settings](#settings). If `/connect` doesn't show up, run `claude update` (tested on 2.1.319).
 
 **3. Connect.** In your project:
 
@@ -119,4 +121,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)
