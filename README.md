@@ -105,15 +105,6 @@ railway variable set DB_PATH=/data/relay.sqlite RELAY_SECRET=$(openssl rand -hex
 
 Your relay's URL is then `https://<domain>/<RELAY_SECRET>`, and on Railway the deploy log prints it as `Ready. In Claude Code run: /connect …`, with the secret left for you to fill in from Variables. Open it in a browser to check the relay is up. That URL is what you pass to `/connect`, and the invite carries it, so only people you invite can make rooms on your relay. Without `RELAY_SECRET` the URL is the bare domain and anyone who finds it can use it. Adding a secret to a relay already in use changes its URL: everyone must update the plugin first (older versions refuse an invite with a path), then join again with the new `/connect` line.
 
-On your own machine, with [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) and no account:
-
-```
-RELAY_SECRET=$(openssl rand -hex 16) IP_HEADER=cf-connecting-ip DB_PATH=relay.sqlite bun relay/server.ts
-cloudflared tunnel --url http://localhost:3000   # in a second terminal
-```
-
-Your URL is the `https://….trycloudflare.com` address it prints, plus `/` and the secret. The relay is only up while your machine is, and that address changes every time `cloudflared` restarts, which breaks every invite. For a fixed address, use a named tunnel on a domain you have in Cloudflare. `IP_HEADER` trusts Cloudflare's header, so don't also expose port 3000 to your network.
-
 Anywhere else, build `relay/Dockerfile`. A few rules:
 
 - Run one instance. Rooms are kept in a SQLite file at `DB_PATH`. Put it on a volume so unread messages survive restarts and redeploys. Without `DB_PATH` they live in memory and a restart drops them.
